@@ -4,40 +4,58 @@ const $ = id => document.getElementById(id);
     const personalFieldIds=['age','restingHr','maxHr','maxHrSource','thresholdHr','thresholdHrSource','vo2max','vo2maxSource','vo2maxDate','experienceMonths','recentConsistency','discomfort'];
     const profileFieldIds=['distance','raceDate','halfGoalTime','paceMin','paceSec','weeklyKm','days','longRun','benchmarkDistance','benchmarkTime','benchmarkDate',...personalFieldIds];
     let currentRecords=[],recordDraft=null,recordJob=0,focusValidation=false,lastAssessment=null,lastAssessmentInput=null,toastTimer,formUpdateTimer;
-    const recordsStore=ProfileStore.createStore(localStorage);
-    const profileListKey='xunxu-profiles-v1',activeProfileKey='xunxu-active-profile-v1';
+    let cloudReady=false,cloudBooting=false,cloudSaveTimer,profileSwitching=false;
+    function makeCloudClient(userId){const provider=typeof XunxuCloud==='undefined'?null:XunxuCloud,epoch=typeof accountEpoch==='undefined'?0:accountEpoch;return ProfileStore.createClient({fetch:userId&&provider?.createFetch?provider.createFetch(userId):provider?.fetch,onStatus:info=>{if(userId&&(userId!==currentUserId||epoch!==accountEpoch))return;updateCloudStatus(info)}})}
+    let savedGuestClient=null,currentUserId=null,authBusy=false,importBusy=false,authActivationPromise=null,activationUserId=null,accountEpoch=0,authChangePending=false;
+    let cloud=makeCloudClient(),recordsStore=ProfileStore.createStore(cloud),storageMode='cloud';
+    let otpEmail='',otpResendAt=0,otpTimer=null;
+    const trialImports=new Map();
+    function providerUser(){return typeof XunxuCloud==='undefined'?null:XunxuCloud.getUser()}
+    function cloudConfigured(){return typeof XunxuCloud!=='undefined'&&XunxuCloud.isConfigured()}
+    function emailEnabled(){return cloudConfigured()&&XunxuCloud.isEmailLoginEnabled()}
+    function savedMessage(cloudText,guestText){return storageMode==='cloud'?cloudText:guestText}
+
     const defaultDate = new Date(); defaultDate.setDate(defaultDate.getDate()+111); $('raceDate').value = dateKey(defaultDate);
     function paceSeconds(){return Math.max(180,Number($('paceMin').value||0)*60+Number($('paceSec').value||0))}
     function clock(sec){const total=Math.round(sec),h=Math.floor(total/3600),m=Math.floor(total%3600/60),s=total%60;return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`}
     function durationLabel(d){return `${d.getMonth()+1}/${d.getDate()}`}
     function dateKey(d){return `${String(d.getFullYear()).padStart(4,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
-    function profileFormKey(profileId){return `xunxu-profile-form-v1:${profileId}`}
     function checkinStorageKey(values){const key=`xunxu-checkins-v1:${values.join(':')}`;return activeProfileId==='default'?key:`${key}:profile:${activeProfileId}`}
     function captureProfileForm(){return Object.fromEntries(profileFieldIds.map(id=>[id,$(id).value]))}
     const defaultProfileForm=captureProfileForm();
     function renderProfileOptions(){const select=$('profileSelect');select.replaceChildren();profiles.forEach(profile=>{const option=document.createElement('option');option.value=profile.id;option.textContent=profile.name;select.appendChild(option)});select.value=activeProfileId}
-    function loadProfileRegistry(){try{const saved=JSON.parse(localStorage.getItem(profileListKey)||'[]');profiles=Array.isArray(saved)?saved.filter(profile=>profile&&typeof profile.id==='string'&&typeof profile.name==='string'&&profile.name.trim()).slice(0,100):[]}catch{profiles=[]}if(!profiles.some(profile=>profile.id==='default'))profiles.unshift({id:'default',name:'我的档案'});try{const savedActive=localStorage.getItem(activeProfileKey);activeProfileId=profiles.some(profile=>profile.id===savedActive)?savedActive:'default'}catch{activeProfileId='default'}try{localStorage.setItem(profileListKey,JSON.stringify(profiles));localStorage.setItem(activeProfileKey,activeProfileId)}catch{}}
-    function saveProfileForm(){try{localStorage.setItem(profileFormKey(activeProfileId),JSON.stringify(captureProfileForm()));return true}catch{storageError('资料暂未保存，请检查浏览器可用空间或存储设置。');return false}}
+    function queueCloudSave(owner){
+      clearTimeout(cloudSaveTimer);const client=cloud,epoch=accountEpoch;
+      cloudSaveTimer=setTimeout(()=>{if(epoch===accountEpoch)client.flush(owner).catch(()=>{});},700);
+    }
+    function saveProfileForm(){
+      if(!cloudReady)return false;
+      const owner=activeProfileId,form=captureProfileForm();
+      try{if(cloud.stage(owner,data=>{data.form=form;return data}))queueCloudSave(owner);return true}
+      catch(error){storageError(error.message);return false}
+    }
     function loadProfileForm(profileId){
       clearTimeout(formUpdateTimer);cancelRecordDraft();activeProfileId=profileId;checkins={};activeCheckinKey='';lastAssessment=null;lastAssessmentInput=null;
-      let saved=null;try{saved=JSON.parse(localStorage.getItem(profileFormKey(profileId))||'null')}catch{storageError('这个档案的设置暂时无法读取。')}
-      const values={...defaultProfileForm,...(saved&&typeof saved==='object'?saved:{})};
-      profileFieldIds.forEach(id=>{if(Object.prototype.hasOwnProperty.call(values,id))$(id).value=values[id]??''});
-      $('profileSelect').value=profileId;try{localStorage.setItem(activeProfileKey,profileId)}catch{storageError('当前档案选择未能保存。')}
-      if(!saved)saveProfileForm();loadRecords();renderRecords();updatePersonalSummary();
+      const values={...defaultProfileForm,...cloud.getData(profileId).form};
+      profileFieldIds.forEach(id=>{$(id).value=values[id]??''});$('profileSelect').value=profileId;
+      loadRecords();renderRecords();updatePersonalSummary();
     }
-    function createProfile(){
+    async function createProfile(){
       const input=$('profileName'),name=input.value.trim();input.setCustomValidity('');
       if(!name){input.setCustomValidity('请填写档案名称。');input.reportValidity();return}
       if(profiles.some(profile=>profile.name.trim().toLocaleLowerCase()===name.toLocaleLowerCase())){input.setCustomValidity('已有同名档案，请使用不同名称。');input.reportValidity();return}
       if(profiles.length>=100){input.setCustomValidity('已达到 100 个档案，请使用现有档案。');input.reportValidity();return}
-      const id=uniqueId('profile'),next=profiles.concat({id,name});
-      try{localStorage.setItem(profileListKey,JSON.stringify(next))}catch{input.setCustomValidity('档案无法保存，请检查浏览器存储设置。');input.reportValidity();return}
-      profiles=next;renderProfileOptions();loadProfileForm(id);selectSetupTab('race');updateDistanceMode();render();$('profileDialog').close();
+      if(profileSwitching)return;const client=cloud,epoch=accountEpoch;profileSwitching=true;setEditingEnabled(false);$('createProfileSubmit').disabled=true;
+      try{
+        saveProfileForm();clearTimeout(cloudSaveTimer);await client.flush(activeProfileId);if(epoch!==accountEpoch)return;
+        const id=uniqueId('profile');await client.create({id,name,data:{form:{...defaultProfileForm},records:[],plans:{},history:[]}});
+        if(epoch!==accountEpoch)return;profiles=client.profiles();renderProfileOptions();loadProfileForm(id);selectSetupTab('race');updateDistanceMode();render();$('profileDialog').close();toast(savedMessage('新档案已保存到云端。','已建立试用档案，仅保留在当前页面。'));
+      }catch(error){if(epoch===accountEpoch){input.setCustomValidity(error.message);input.reportValidity()}}
+      finally{if(epoch===accountEpoch){profileSwitching=false;setEditingEnabled(cloudReady);$('createProfileSubmit').disabled=false}}
     }
     function parseTimeInput(value){const match=String(value||'').trim().match(/^(\d{1,2}):([0-5]\d):([0-5]\d)$/);if(!match)return null;const hours=Number(match[1]),minutes=Number(match[2]),seconds=Number(match[3]);if(hours>12)return null;const total=hours*3600+minutes*60+seconds;return total>0?total:null}
     function updateDistanceMode(){const half=Number($('distance').value)<30;$('halfGoalField').hidden=!half;$('paceFields').hidden=half;$('riskAssessment').hidden=true;$('halfGoalTime').required=half;$('paceMin').required=!half;$('paceSec').required=!half;$('benchmarkHelp').textContent=half?'半马能力评估请填 10 公里或半马成绩；格式 HH:MM:SS。':'全马能力评估请填近 12 个月全马成绩；格式 HH:MM:SS。';$('scheduleBasisHint').textContent=half?'半马专项固定 4 跑 + 1 次力量。跑量、最长跑和目前频率用于难度评估。':'全马按每周可跑天数和现有跑量安排距离，课表配速按目标；个人能力建议另列。'}
-    function updateCheckinProgress(){const today=new Date();today.setHours(0,0,0,0);const todayKey=dateKey(today),workouts=Array.from(document.querySelectorAll('#weekList .checkin[data-workout="true"]')).filter(button=>button.dataset.date>=activePlanStartDate&&button.dataset.date<=todayKey),done=workouts.filter(button=>button.getAttribute('aria-pressed')==='true').length,total=workouts.length,percent=total?Math.round(done/total*100):0;$('planCompletionMetric').textContent=total?`${percent}%`:'—';$('planCompletionDetail').textContent=total?`${done}/${total} 次`:'尚未开始';$('planCompletionBar').style.width=`${percent}%`;$('planCompletionBar').parentElement.setAttribute('aria-valuenow',String(percent));$('progressSummary').textContent=total?`计划完成度 ${percent}% · 已完成 ${done}/${total} 次训练 · 暂存在此浏览器`:'等待计划中的首个训练日 · 暂存在此浏览器';Array.from(document.querySelectorAll('#weekList .week')).forEach(week=>{const span=week.querySelector('.week-completion'),items=Array.from(week.querySelectorAll('.checkin[data-workout="true"]')).filter(button=>button.dataset.date>=activePlanStartDate&&button.dataset.date<=todayKey),weekDone=items.filter(button=>button.getAttribute('aria-pressed')==='true').length;span.textContent=items.length?`完成 ${weekDone}/${items.length} · ${Math.round(weekDone/items.length*100)}%`:(week.dataset.end<activePlanStartDate?'计划未开始':'待训练')})}
+    function updateCheckinProgress(){const today=new Date();today.setHours(0,0,0,0);const todayKey=dateKey(today),workouts=Array.from(document.querySelectorAll('#weekList .checkin[data-workout="true"]')).filter(button=>button.dataset.date>=activePlanStartDate&&button.dataset.date<=todayKey),done=workouts.filter(button=>button.getAttribute('aria-pressed')==='true').length,total=workouts.length,percent=total?Math.round(done/total*100):0;$('planCompletionMetric').textContent=total?`${percent}%`:'—';$('planCompletionDetail').textContent=total?`${done}/${total} 次`:'尚未开始';$('planCompletionBar').style.width=`${percent}%`;$('planCompletionBar').parentElement.setAttribute('aria-valuenow',String(percent));$('progressSummary').textContent=total?`计划完成度 ${percent}% · 已完成 ${done}/${total} 次训练 · ${storageMode==='cloud'?'打卡保存于云端':'试用打卡仅在当前页面'}`:`等待计划中的首个训练日 · ${storageMode==='cloud'?'打卡保存于云端':'试用打卡仅在当前页面'}`;Array.from(document.querySelectorAll('#weekList .week')).forEach(week=>{const span=week.querySelector('.week-completion'),items=Array.from(week.querySelectorAll('.checkin[data-workout="true"]')).filter(button=>button.dataset.date>=activePlanStartDate&&button.dataset.date<=todayKey),weekDone=items.filter(button=>button.getAttribute('aria-pressed')==='true').length;span.textContent=items.length?`完成 ${weekDone}/${items.length} · ${Math.round(weekDone/items.length*100)}%`:(week.dataset.end<activePlanStartDate?'计划未开始':'待训练')})}
     function easyRange(goal,slower=105){return `${fmt(goal+65)}–${fmt(goal+slower)}/km`}
     function plannedPace(type,title,goal,isHalf=false){
       const easy=isHalf?`${fmt(goal+62)}–${fmt(goal+92)}/km`:easyRange(goal);
@@ -79,6 +97,7 @@ const $ = id => document.getElementById(id);
     function parseBenchmarkDate(value){const match=String(value||'').trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);if(!match)return null;const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),date=new Date(0);date.setFullYear(year,month-1,day);date.setHours(0,0,0,0);if(date.getFullYear()!==year||date.getMonth()!==month-1||date.getDate()!==day)return null;return date}
     function recentSessionLimit(dayDate,history){const cutoff=new Date(dayDate);cutoff.setDate(cutoff.getDate()-30);const recent=history.filter(entry=>entry.date>=cutoff&&entry.date<=dayDate);return recent.length?Math.max(...recent.map(entry=>entry.km))*1.10:Infinity}
     function render(){
+      if(!cloudReady)return;
       $('templatePanel').hidden=true;
       const dist=Number($('distance').value),isHalf=dist<30,current=Number($('weeklyKm').value),longBase=Number($('longRun').value),runDays=Number($('days').value);
       const race=parseBenchmarkDate($('raceDate').value),dateValue=race?dateKey(race):'',now=new Date();now.setHours(0,0,0,0);
@@ -95,7 +114,7 @@ const $ = id => document.getElementById(id);
       if(!Number.isFinite(current)||current<5||current>160){showGenerationError('目前周跑量请填写 5–160 公里之间的数值。','weeklyKm');return}
       if(!Number.isFinite(longBase)||longBase<3||longBase>42){showGenerationError('近 30 天最长跑请填写 3–42 公里之间的数值。','longRun');return}
       const personalInvalid=validatePersonal();if(personalInvalid){showGenerationError(personalInvalid.message,personalInvalid.field);return}
-      const currentWeekStart=new Date(now);currentWeekStart.setDate(now.getDate()-((now.getDay()+6)%7));const currentWeekStartKey=dateKey(currentWeekStart);activeCheckinKey=checkinStorageKey([dist,dateValue,goal,current,runDays,longBase]);const planStartKey=`${activeCheckinKey}:started`;try{checkins=JSON.parse(localStorage.getItem(activeCheckinKey)||'{}')||{};activePlanStartDate=localStorage.getItem(planStartKey)||dateKey(now)}catch{checkins={};activePlanStartDate=dateKey(now)}
+      const currentWeekStart=new Date(now);currentWeekStart.setDate(now.getDate()-((now.getDay()+6)%7));const currentWeekStartKey=dateKey(currentWeekStart);activeCheckinKey=checkinStorageKey([dist,dateValue,goal,current,runDays,longBase]);const savedPlan=cloud.getData(activeProfileId).plans[activeCheckinKey];checkins={...(savedPlan?.checkins||{})};activePlanStartDate=savedPlan?.started||dateKey(now)
       const days=Math.ceil((race-now)/86400000),weeks=Math.max(1,Math.ceil(days/7));
       $('goalTimeHint').textContent=isHalf?`目标配速约 ${fmt(goal)}/km`:`预计完赛约 ${clock(target)}`;$('finishTime').textContent=clock(target);$('weeksMetric').textContent=`${weeks} 周`;$('daysMetric').textContent=`${days} 天`;
       const raceName=isHalf?'半程马拉松':'马拉松';$('summaryTitle').textContent=`${weeks} 周${raceName}训练周期`;$('summaryCopy').textContent=`${durationLabel(now)} – ${durationLabel(race)} · 逐步建立耐力、专项训练与赛前减量`;
@@ -154,12 +173,9 @@ const $ = id => document.getElementById(id);
 
 function targetCheckinState(dateValue,target,now){
   activeCheckinKey=checkinStorageKey(['half-target-v1',dateValue,target]);
-  try{
-    const saved=JSON.parse(localStorage.getItem(activeCheckinKey)||'{}');
-    checkins=saved&&typeof saved==='object'&&!Array.isArray(saved)?saved:{};
-    const savedStart=localStorage.getItem(activeCheckinKey+':started');
-    activePlanStartDate=parseBenchmarkDate(savedStart)&&savedStart<=dateKey(now)?savedStart:dateKey(now);
-  }catch{checkins={};activePlanStartDate=dateKey(now)}
+  const saved=cloud.getData(activeProfileId).plans[activeCheckinKey];
+  checkins={...(saved?.checkins||{})};
+  activePlanStartDate=parseBenchmarkDate(saved?.started)&&saved.started<=dateKey(now)?saved.started:dateKey(now);
 }
 function kmRangeLabel(range){
   if(!range||!Number.isFinite(range[0]))return '—';
@@ -259,26 +275,27 @@ function effectiveRecords(){
   if(seconds&&distance&&date)records.push({id:'legacy_'+activeProfileId,profileId:activeProfileId,distanceKm:distance,elapsedSeconds:seconds,date,effort:'race',confirmed:true,include:true,durationType:'elapsed',course:'unknown',source:'manual'});
   return records;
 }
-function planHistoryKey(profileId){return 'xunxu-plan-evidence-v2:'+profileId}
 function readAdherence(){
   try{
-    const prior=JSON.parse(localStorage.getItem(planHistoryKey(activeProfileId))||'null');
-    if(!prior||prior.profileId!==activeProfileId||!Array.isArray(prior.dates)||typeof prior.checkinKey!=='string')return null;
-    const expectedPrefix='xunxu-checkins-v1:';
-    if(!prior.checkinKey.startsWith(expectedPrefix)||(activeProfileId!=='default'&&!prior.checkinKey.endsWith(':profile:'+activeProfileId))||(activeProfileId==='default'&&prior.checkinKey.includes(':profile:')))return null;
-    const saved=JSON.parse(localStorage.getItem(prior.checkinKey)||'{}'),today=dateKey(new Date());
-    const due=[...new Set(prior.dates)].filter(date=>date>=prior.startDate&&date<today);
-    return {due:due.length,completed:due.filter(date=>saved[date]===true).length};
+    const data=cloud.getData(activeProfileId),prior=data.history.find(item=>item.planKey===activeCheckinKey),plan=data.plans[activeCheckinKey];
+    if(!prior||!plan||!Array.isArray(prior.dates))return null;
+    const today=dateKey(new Date()),due=[...new Set(prior.dates)].filter(date=>date>=prior.started&&date<today);
+    return {due:due.length,completed:due.filter(date=>plan.checkins?.[date]===true).length};
   }catch{return null}
 }
 function savePlanHistory(){
-  const dates=[...document.querySelectorAll('#weekList .checkin[data-workout="true"]')].map(button=>button.dataset.date);
+  if(!cloudReady||!activeCheckinKey)return;
+  const owner=activeProfileId,key=activeCheckinKey,started=activePlanStartDate,dates=[...document.querySelectorAll('#weekList .checkin[data-workout="true"]')].map(button=>button.dataset.date),today=dateKey(new Date());
   try{
-    const previous=JSON.parse(localStorage.getItem(planHistoryKey(activeProfileId))||'null'),today=dateKey(new Date());
-    const past=previous?.profileId===activeProfileId&&previous?.checkinKey===activeCheckinKey&&Array.isArray(previous.dates)?previous.dates.filter(date=>date<today):[];
-    localStorage.setItem(activeCheckinKey+':started',activePlanStartDate);
-    localStorage.setItem(planHistoryKey(activeProfileId),JSON.stringify({profileId:activeProfileId,startDate:activePlanStartDate,checkinKey:activeCheckinKey,dates:[...new Set([...past,...dates])].sort()}));
-  }catch{storageError('计划历史暂未保存，训练执行情况不会纳入下一次评估。')}
+    const changed=cloud.stage(owner,data=>{
+      const previous=data.history.find(item=>item.planKey===key),past=previous?.dates?.filter(date=>date<today)||[];
+      if(!data.plans[key])data.plans[key]={started,checkins:{}};
+      const item={planKey:key,started:data.plans[key].started,dates:[...new Set([...past,...dates])].sort()},index=data.history.findIndex(entry=>entry.planKey===key);
+      if(index>=0)data.history[index]=item;else data.history.push(item);
+      return data;
+    });
+    if(changed)queueCloudSave(owner);
+  }catch(error){storageError(error.message)}
 }
 
 function buildAssessment(settings){
@@ -328,14 +345,15 @@ function annotateSession(session,assessment){
   session.advice=advice;
   session.heart=`当前能力建议：${advice.paceText||'待补充成绩'} · ${advice.label}${advice.heartText?' · '+advice.heartText:''}`;
 }
-function cancelRecordDraft(){
+function cancelRecordDraft(force=false){
+  if(recordDraft?.saving&&force!==true){toast(savedMessage('正在保存到云端，请稍候。','正在确认成绩，请稍候。'));return}
   recordJob++;
   if(recordDraft){recordDraft.controller?.abort();if(recordDraft.objectUrl)URL.revokeObjectURL(recordDraft.objectUrl)}
-  recordDraft=null;if($('recordDialog').open)$('recordDialog').close();$('screenshotInput').value='';
+  recordDraft=null;if($('recordDialog').open)$('recordDialog').close();$('screenshotInput').value='';$('recordPreview').removeAttribute('src');$('recordPreview').hidden=true;$('rawText').textContent='';$('imageFilename').textContent='';
 }
 function freshRecordDraft(record){
   cancelRecordDraft();const id=record?.id||uniqueId('race');
-  recordDraft={owner:activeProfileId,id,existing:Boolean(record),record:record||null,controller:new AbortController(),job:recordJob,blob:null,objectUrl:null,rawText:record?.rawText||'',fingerprint:record?.fingerprint||null,source:record?.source||'manual'};
+  recordDraft={dirty:false,saving:false,owner:activeProfileId,id,existing:Boolean(record),record:record||null,controller:new AbortController(),job:recordJob,blob:null,objectUrl:null,rawText:record?.rawText||'',fingerprint:record?.fingerprint||null,source:record?.source||'manual'};
   $('recordForm').reset();$('recordOwner').textContent=profiles.find(profile=>profile.id===activeProfileId)?.name||'当前档案';
   $('recordDate').max=dateKey(new Date());$('recordPreview').hidden=true;$('recordPreview').removeAttribute('src');$('imagePlaceholder').hidden=false;$('imageFilename').textContent='';
   $('recordError').hidden=true;$('recognitionWarnings').hidden=true;$('rawTextDetails').hidden=true;$('saveRecordButton').disabled=false;$('ocrProgress').hidden=true;
@@ -351,10 +369,10 @@ function updateRecordDerived(){const distance=Number($('recordDistance').value),
 function showDraftImage(blob,draft){if(!blob||recordDraft!==draft||activeProfileId!==draft.owner)return;if(draft.objectUrl)URL.revokeObjectURL(draft.objectUrl);draft.objectUrl=URL.createObjectURL(blob);$('recordPreview').src=draft.objectUrl;$('recordPreview').hidden=false;$('imagePlaceholder').hidden=true}
 async function editRecord(id){
   const record=currentRecords.find(item=>item.id===id);if(!record)return;const draft=freshRecordDraft(record);
-  if(record.hasImage){try{const image=await ProfileStore.getImage(draft.owner,id);if(recordDraft!==draft)return;if(image)showDraftImage(image,draft);else{$('imageFilename').textContent='原截图暂不可用，成绩数据仍保留。'}}catch(error){if(recordDraft===draft)$('imageFilename').textContent=error.message}}
+  if(record.hasImage){try{const image=await cloud.fetchImage(draft.owner,id,draft.controller.signal);if(recordDraft!==draft)return;if(image)showDraftImage(image,draft);else{$('imageFilename').textContent='原截图暂不可用，成绩数据仍保留。'}}catch(error){if(recordDraft===draft)$('imageFilename').textContent=error.message}}
 }
 async function handleUpload(file){
-  if(!file)return;const draft=freshRecordDraft();draft.source='screenshot';draft.filename=String(file.name||'成绩截图').slice(0,160);
+  if(!file||!cloudReady||recordDraft?.saving)return;const draft=freshRecordDraft();draft.dirty=true;draft.source='screenshot';draft.filename=String(file.name||'成绩截图').slice(0,160);
   $('saveRecordButton').disabled=true;$('recognitionMessage').textContent='正在检查图片…';$('imageFilename').textContent=draft.filename;$('ocrProgress').hidden=false;$('ocrProgress').value=0;
   const live=()=>recordDraft===draft&&draft.owner===activeProfileId&&!draft.controller.signal.aborted;
   try{
@@ -385,10 +403,10 @@ async function handleUpload(file){
   }finally{if(live()){$('saveRecordButton').disabled=false;$('ocrProgress').hidden=true}}
 }
 async function saveRecord(event){
-  event.preventDefault();const draft=recordDraft;if(!draft||draft.owner!==activeProfileId)return;
+  event.preventDefault();const draft=recordDraft,epoch=accountEpoch,store=recordsStore;if(!draft||draft.owner!==activeProfileId)return;
   $('recordError').hidden=true;
   const fail=message=>{throw new Error(message)};
-  let imageWritten=false,metadataWritten=false;
+  if(draft.saving)return;
   try{
     const distance=Number($('recordDistance').value),seconds=parseTimeInput($('recordTime').value),date=$('recordDate').value,effort=$('recordEffort').value;
     if(![10,21.0975,42.195].includes(distance))fail('请选择 10 公里、半马或全马成绩。');
@@ -402,47 +420,265 @@ async function saveRecord(event){
     const record={...(draft.record||{}),id:draft.id,profileId:draft.owner,distanceKm:distance,elapsedSeconds:seconds,date,averageHr:average,peakHr:peak,effort,confirmed:true,include:$('recordInclude').checked,durationType:$('recordDurationType').value,course:$('recordCourse').value,source:draft.source,filename:draft.filename||draft.record?.filename||'',fingerprint:draft.fingerprint,rawText:draft.rawText,recognitionConfidence:draft.confidence??draft.record?.recognitionConfidence??null,hasImage:Boolean(draft.blob||draft.record?.hasImage),updatedAt:new Date().toISOString()};
     const existing=recordsStore.list(draft.owner),duplicate=existing.find(item=>item.id!==draft.id&&((record.fingerprint&&item.fingerprint===record.fingerprint)||(item.date===date&&Number(item.distanceKm)===distance&&Number(item.elapsedSeconds)===seconds)));
     if(duplicate)fail('这个档案已经有同一张截图或同一次成绩，请编辑原记录，避免重复计算。');
-    $('saveRecordButton').disabled=true;
-    if(draft.blob){await ProfileStore.putImage(draft.owner,draft.id,draft.blob);imageWritten=true}
-    if(recordDraft!==draft||activeProfileId!==draft.owner){if(imageWritten)await ProfileStore.removeImage(draft.owner,draft.id);return}
-    recordsStore.put(draft.owner,record);metadataWritten=true;
-    cancelRecordDraft();loadRecords();renderRecords();updatePersonalSummary();saveProfileForm();render();toast(recordUsable(record)?'成绩已保存，计划与目标评估已按本档案更新。':'成绩已留档；可比的比赛 / 全力测试记录才会用于能力评估。');
+    $('saveRecordButton').disabled=true;draft.saving=true;setRecordSaving(true);
+    saveProfileForm();clearTimeout(cloudSaveTimer);
+    await store.put(draft.owner,record,draft.blob?{recordId:draft.id,blob:draft.blob,filename:'race-result.jpg'}:undefined);
+    if(epoch!==accountEpoch||recordDraft!==draft||activeProfileId!==draft.owner)return;
+    draft.saving=false;cancelRecordDraft();loadRecords();renderRecords();updatePersonalSummary();render();toast(storageMode==='guest'?'试用成绩已用于评估，仅保留在当前页面。':recordUsable(record)?'成绩与截图已保存到云端，当前能力建议已更新。':'成绩已保存到云端；可比的比赛 / 全力测试记录才用于能力评估。');
   }catch(error){
-    if(imageWritten&&!metadataWritten&&!draft.existing){try{await ProfileStore.removeImage(draft.owner,draft.id)}catch{storageError('保存未完成，新增截图可能仍占用本机空间。请重试保存。')}}
-    if(recordDraft===draft){$('recordError').textContent=error.message;$('recordError').hidden=false}
-  }finally{if(recordDraft===draft)$('saveRecordButton').disabled=false}
+    if(epoch===accountEpoch&&recordDraft===draft){$('recordError').textContent=error.message;$('recordError').hidden=false}
+  }finally{draft.saving=false;if(epoch===accountEpoch){setRecordSaving(false);if(recordDraft===draft)$('saveRecordButton').disabled=false}}
 }
 async function deleteRecord(id){
-  const owner=activeProfileId,record=currentRecords.find(item=>item.id===id);if(!record)return;
+  const owner=activeProfileId,epoch=accountEpoch,store=recordsStore,record=currentRecords.find(item=>item.id===id);if(!record)return;
   if(!confirm(`删除本档案 ${record.date} 的${recordName(record.distanceKm)}成绩及截图？`))return;
-  try{recordsStore.remove(owner,id);if(record.hasImage){try{await ProfileStore.removeImage(owner,id)}catch{storageError('成绩已移除；截图清理未完成，但不会再参与评估。')}}if(owner===activeProfileId){loadRecords();renderRecords();updatePersonalSummary();render();toast('已从本档案移除该成绩。')}}catch(error){storageError(error.message)}
+  try{await store.remove(owner,id);if(epoch===accountEpoch&&owner===activeProfileId){loadRecords();renderRecords();updatePersonalSummary();render();toast(savedMessage('已从当前云端档案移除成绩及截图。','已从当前试用档案移除成绩及截图。'))}}catch(error){if(epoch===accountEpoch)storageError(error.message)}
+}
+
+function hasUnsavedChanges(){return cloud.hasUnsaved()||Boolean(savedGuestClient?.hasUnsaved()||recordDraft?.dirty||recordDraft?.saving||importBusy)}
+function setEditingEnabled(enabled){
+  document.querySelectorAll('#plannerForm input, #plannerForm select, #plannerForm button').forEach(element=>{element.disabled=!enabled});
+}
+function setRecordSaving(saving){
+  ['closeRecordDialog','cancelRecordButton','saveRecordButton'].forEach(id=>$(id).disabled=saving);
+  document.querySelectorAll('#recordForm input, #recordForm select').forEach(element=>{element.disabled=saving});
+  $('profileSelect').disabled=saving||profileSwitching||!cloudReady;$('addProfileButton').disabled=saving||profileSwitching||!cloudReady;
+}
+function updateStorageCopy(){
+  const guest=storageMode==='guest';
+  $('profileStorageHint').textContent=guest?'各试用档案相互独立，仅在当前页面暂存。登录邮箱后可另存到云端。':'各档案独立保存到云端，登录同一邮箱可跨设备使用。';
+  $('recordStorageHint').textContent=guest?'截图在当前设备识别，不发送给第三方识别服务。试用成绩仅在当前页面，登录后可保存到云端。':'截图在当前设备识别；确认后将截图与成绩保存到当前云端档案，不发送给第三方识别服务。';
+  $('saveRecordButton').textContent=guest?'确认数据并用于评估':'确认数据并保存';
+  $('cloudStorageHint').textContent=guest?' · 刷新或关闭后会丢失':' · 比赛、成绩、截图和打卡自动保存到云端';
+  $('cloudSignOut').hidden=!providerUser();
+}
+function updateCloudStatus(info){
+  if(info.profileId&&info.profileId!==activeProfileId)return;
+  updateStorageCopy();
+  if(storageMode==='guest'){
+    $('cloudBanner').dataset.state='guest';$('cloudState').textContent=emailEnabled()?'公开试用 · 登录邮箱后可保存到云端':'公开试用 · 邮箱云服务尚未接通';
+    $('cloudIdentity').textContent='试用资料仅在当前页面';$('cloudRetry').hidden=true;$('cloudReload').hidden=true;$('cloudSignIn').hidden=false;
+    $('cloudSignIn').textContent=providerUser()?'重新连接云端':emailEnabled()?'邮箱登录保存':'了解云端保存';
+    if(info.error)storageError(info.error.message);
+    return;
+  }
+  const status=info.status||'loading',labels={loading:'正在读取云端档案…',dirty:'有修改尚未保存，正在等待同步…',saving:'正在保存到云端…',saved:'已保存到云端',error:'云端保存失败，修改仍保留在当前页面',conflict:'云端已有更新，当前草稿未覆盖云端',unauthorized:'请登录邮箱后读取和保存档案'};
+  const message=info.error?.message||labels[status]||labels.loading;
+  $('cloudBanner').dataset.state=status;$('cloudState').textContent=message+(status==='error'&&info.error?.source==='action'?' 请重新执行刚才的操作以重试。':'');
+  $('cloudRetry').hidden=!(status==='dirty'||(status==='error'&&(!cloudReady||info.retryable)));$('cloudRetry').textContent=cloudReady?'重试保存':'重新连接';$('cloudReload').hidden=!cloudReady;$('cloudReload').disabled=status==='saving';$('cloudSignIn').hidden=status!=='unauthorized';$('cloudSignIn').textContent='邮箱登录保存';
+  if(status==='saved'){$('storageStatus').hidden=true}else if(info.error)storageError(info.error.message);
+}
+function clearAccountView(){
+  if($('profileDialog').open)$('profileDialog').close();$('profileName').value='';profileSwitching=false;importBusy=false;$('createProfileSubmit').disabled=false;$('trialImportError').hidden=true;
+  clearTimeout(cloudSaveTimer);clearTimeout(formUpdateTimer);cancelRecordDraft(true);$('recordForm').reset?.();profiles=[];activeProfileId='default';currentRecords=[];checkins={};activeCheckinKey='';activePlanStartDate='';lastAssessment=null;lastAssessmentInput=null;
+  profileFieldIds.forEach(id=>{$(id).value=defaultProfileForm[id]??''});
+  $('profileSelect').replaceChildren();$('recordList').replaceChildren();$('recordCount').textContent='0';$('abilityPanel').hidden=true;$('riskAssessment').hidden=true;$('templatePanel').hidden=true;$('phaseRow').innerHTML='';
+  $('weekList').innerHTML='<div class="empty-state">正在准备训练档案…</div>';$('summaryTitle').textContent='正在准备训练档案';$('summaryCopy').textContent='';$('storageStatus').hidden=true;
+  ['finishTime','weeksMetric','daysMetric','peakMetric','longMetric','qualityMetric','planCompletionMetric','planCompletionDetail'].forEach(id=>$(id).textContent='—');$('planCompletionBar').style.width='0%';
+}
+async function startGuest(options={}){
+  cloudReady=false;cloudBooting=false;setEditingEnabled(false);clearAccountView();storageMode='guest';
+  cloud=options.client||GuestStore.createClient({onStatus:updateCloudStatus});recordsStore=ProfileStore.createStore(cloud);profiles=cloud.profiles();
+  if(!profiles.length){await cloud.create({id:'default',name:'我的试用档案',data:{form:{...defaultProfileForm},records:[],plans:{},history:[]}});profiles=cloud.profiles()}
+  activeProfileId=profiles.some(p=>p.id===options.profileId)?options.profileId:profiles[0].id;
+  cloudReady=true;renderProfileOptions();loadProfileForm(activeProfileId);setEditingEnabled(true);updateDistanceMode();render();if(!options.client)cloud.markBaseline();
+  updateCloudStatus({status:'guest'});updateTrialImport();
+}
+async function startCloud(epoch=accountEpoch){
+  if(cloudBooting)return;cloudBooting=true;cloudReady=false;setEditingEnabled(false);updateDistanceMode();updateCloudStatus({status:'loading'});
+  const accountClient=cloud;
+  try{
+    const session=await accountClient.session();if(epoch!==accountEpoch)return false;
+    if(!session.user||session.user.id!==currentUserId)throw new Error('登录身份已变化，请重新连接云端。');
+    let loadedProfiles=session.profiles;
+    if(!loadedProfiles.length){
+      try{await accountClient.create({id:'default',name:'我的档案',data:{form:{...defaultProfileForm},records:[],plans:{},history:[]}});loadedProfiles=accountClient.profiles()}
+      catch(error){if(error.code!=='profile_exists')throw error;loadedProfiles=(await accountClient.session()).profiles}
+    }
+    if(epoch!==accountEpoch)return false;
+    const chosen=loadedProfiles[0].id;if(!accountClient.isLoaded(chosen))await accountClient.load(chosen);if(epoch!==accountEpoch)return false;
+    profiles=loadedProfiles;$('cloudIdentity').textContent=session.user.email||session.user.displayName||'已登录';
+    cloudReady=true;renderProfileOptions();loadProfileForm(chosen);setEditingEnabled(true);updateDistanceMode();render();updateCloudStatus({profileId:chosen,...accountClient.status(chosen)});updateTrialImport();return true;
+  }finally{if(epoch===accountEpoch)cloudBooting=false}
+}
+async function activateCloud(user){
+  if(!user?.id)return;
+  if(storageMode==='guest'&&recordDraft?.dirty){storageError('邮箱已登录。请先确认或取消当前成绩，再点击“重新连接云端”。试用资料仍保留。');updateCloudStatus({status:'guest'});return}
+  if(storageMode==='cloud'&&currentUserId===user.id&&cloudReady)return;
+  if(authActivationPromise&&activationUserId===user.id)return authActivationPromise;
+  const priorGuest=storageMode==='guest'?cloud:null,priorProfile=activeProfileId;
+  if(priorGuest){saveProfileForm();savedGuestClient=priorGuest}
+  else if(currentUserId&&currentUserId!==user.id){savedGuestClient?.clear();savedGuestClient=null;trialImports.clear()}
+  const epoch=++accountEpoch;currentUserId=user.id;activationUserId=user.id;cloudBooting=false;cloudReady=false;clearAccountView();storageMode='cloud';cloud=makeCloudClient(user.id);recordsStore=ProfileStore.createStore(cloud);setEditingEnabled(false);
+  authActivationPromise=(async()=>{
+    try{await startCloud(epoch)}
+    catch(error){
+      if(epoch!==accountEpoch)return;
+      const guest=priorGuest||savedGuestClient;savedGuestClient=null;
+      await startGuest({client:guest,profileId:priorProfile});
+      storageError('邮箱已登录，但云端资料暂时无法读取：'+error.message+' 试用资料仍在当前页面。');
+      toast('云端连接未完成，可以继续试用或重试连接。');
+    }finally{if(epoch===accountEpoch){authActivationPromise=null;activationUserId=null;updateTrialImport()}}
+  })();return authActivationPromise;
+}
+function updateTrialImport(){
+  const available=savedGuestClient?.profiles()||[];
+  $('trialImport').hidden=storageMode!=='cloud'||!available.length||!savedGuestClient?.hasUnsaved();
+  const previous=$('trialProfileSelect').value;$('trialProfileSelect').replaceChildren();
+  available.forEach(profile=>{const option=document.createElement('option');option.value=profile.id;option.textContent=profile.name;$('trialProfileSelect').appendChild(option)});
+  if(available.some(p=>p.id===previous))$('trialProfileSelect').value=previous;
+  $('importTrialButton').disabled=importBusy||!cloudReady;$('trialProfileSelect').disabled=importBusy;
+}
+async function importTrial(){
+  if(importBusy||storageMode!=='cloud'||!cloudReady||!savedGuestClient)return;
+  const sourceId=$('trialProfileSelect').value;if(!sourceId)return;
+  const accountClient=cloud,epoch=accountEpoch,snapshot=savedGuestClient.exportProfile(sourceId),id=trialImports.get(sourceId)||uniqueId('profile');trialImports.set(sourceId,id);
+  importBusy=true;profileSwitching=true;setEditingEnabled(false);$('cloudSignOut').disabled=true;$('trialImportError').hidden=true;updateTrialImport();
+  try{
+    saveProfileForm();clearTimeout(cloudSaveTimer);await accountClient.flush(activeProfileId);if(epoch!==accountEpoch)throw new Error('登录身份已变化，上传已停止。');
+    const data=GuestStore.remapProfile(snapshot,id),name=(snapshot.profile.name+' · 试用导入').slice(0,80);
+    try{await accountClient.create({id,name,data})}catch(error){if(error.code!=='profile_exists')throw error;await accountClient.load(id,{discard:true})}
+    if(epoch!==accountEpoch)throw new Error('登录身份已变化，上传已停止。');
+    for(const image of snapshot.images){
+      if(accountClient.getData(id).records.some(r=>r.id===image.recordId&&r.hasImage))continue;
+      await accountClient.commit(id,value=>{const record=value.records.find(r=>r.id===image.recordId);if(!record)throw new Error('导入档案的成绩已变化，请重新读取后核对。');record.hasImage=true;return value},image);
+      if(epoch!==accountEpoch)throw new Error('登录身份已变化，上传已停止。');
+    }
+    savedGuestClient.dropProfile(sourceId);trialImports.delete(sourceId);profiles=cloud.profiles();renderProfileOptions();loadProfileForm(id);updateDistanceMode();render();updateCloudStatus({profileId:id,...cloud.status(id)});
+    toast('试用资料已另存为新的云端档案。');
+  }catch(error){if(epoch===accountEpoch){$('trialImportError').textContent='尚未全部保存：'+error.message+' 试用原稿仍保留，可重试。';$('trialImportError').hidden=false;profiles=cloud.profiles();renderProfileOptions()}}
+  finally{if(epoch===accountEpoch){importBusy=false;profileSwitching=false;$('cloudSignOut').disabled=false;setEditingEnabled(cloudReady);updateTrialImport()}}
+}
+function loginMessage(message,isError=false){$('loginMessage').textContent=message;$('loginMessage').dataset.error=String(isError);$('loginMessage').hidden=!message}
+function updateCodeButton(){
+  clearTimeout(otpTimer);const seconds=Math.max(0,Math.ceil((otpResendAt-Date.now())/1000));
+  $('sendCodeButton').disabled=authBusy||seconds>0;$('sendCodeButton').textContent=authBusy?'正在发送…':seconds?`${seconds} 秒后可重发`:otpEmail?'重新发送验证码':'发送验证码';
+  if(seconds&&$('loginDialog').open)otpTimer=setTimeout(updateCodeButton,1000);
+}
+function setAuthBusy(busy){
+  authBusy=busy;$('loginEmail').disabled=busy;$('loginCode').disabled=busy;$('verifyCodeButton').disabled=busy;$('closeLoginDialog').disabled=busy;$('continueTrialButton').disabled=busy;$('verifyCodeButton').textContent=busy?'正在验证…':'验证并登录';updateCodeButton();
+  if(!busy&&(authChangePending||(providerUser()?.id||null)!==currentUserId))return reconcileAuthState();
+}
+function reconcileAuthState(){
+  if(authBusy){authChangePending=true;return Promise.resolve()}
+  authChangePending=false;const user=providerUser();
+  if((user?.id||null)===currentUserId)return Promise.resolve();
+  clearTimeout(otpTimer);otpEmail='';otpResendAt=0;$('loginCode').value='';$('loginEmail').value='';if($('loginDialog').open)$('loginDialog').close();
+  if(user)return activateCloud(user);
+  ++accountEpoch;currentUserId=null;activationUserId=null;authActivationPromise=null;savedGuestClient?.clear();savedGuestClient=null;trialImports.clear();
+  return startGuest().then(()=>toast('邮箱登录已结束，当前页面已切换为新的试用档案。'));
+}
+function openLogin(){
+  if(providerUser()&&!(storageMode==='cloud'&&$('cloudBanner').dataset.state==='unauthorized')){activateCloud(providerUser());return}
+  const enabled=emailEnabled();$('loginUnavailable').hidden=enabled;$('sendCodeForm').hidden=!enabled;$('verifyCodeForm').hidden=!enabled||!otpEmail;loginMessage('');
+  $('loginDialog').showModal();updateCodeButton();if(enabled)$('loginEmail').focus();else $('continueTrialButton').focus();
+}
+function closeLogin(){if(authBusy)return;clearTimeout(otpTimer);$('loginDialog').close()}
+async function sendCode(event){
+  event.preventDefault();if(authBusy||!emailEnabled()||Date.now()<otpResendAt)return;
+  const field=$('loginEmail');if(!field.reportValidity())return;const email=field.value.trim();setAuthBusy(true);loginMessage('正在发送验证码…');
+  try{await XunxuCloud.sendCode(email);otpEmail=email;otpResendAt=Date.now()+60000;$('verifyCodeForm').hidden=false;$('loginCode').value='';$('codeEmailHint').textContent='验证码已发送至 '+email+'，也请检查垃圾邮件。';loginMessage('验证码已发送。请在邮件有效期内输入。')}
+  catch(error){loginMessage(error.message||'验证码发送失败，请稍后重试。',true)}
+  finally{await setAuthBusy(false);if(otpEmail)$('loginCode').focus()}
+}
+async function resumeCloudAfterReauth(){
+  const client=cloud,owner=activeProfileId,epoch=accountEpoch,state=client.status(owner),pendingAction=state.error?.source==='action'||Boolean(recordDraft?.dirty);
+  if(state.dirty){
+    try{await client.flush(owner)}
+    catch(error){if(epoch===accountEpoch)updateCloudStatus({profileId:owner,...client.status(owner)});return '邮箱已重新验证，修改仍未保存。请按页面提示重试。'}
+  }
+  if(epoch!==accountEpoch)return '登录身份已变化，正在重新读取档案。';
+  if(pendingAction){
+    const error=Object.assign(new Error('邮箱已重新验证。刚才未完成的操作仍需重新执行，请重新确认成绩或再次打卡。'),{source:'action'});
+    updateCloudStatus({profileId:owner,status:'error',error,retryable:false});return '邮箱已重新验证，请重新执行刚才未完成的操作。';
+  }
+  updateCloudStatus({profileId:owner,...client.status(owner)});return state.dirty?'邮箱已重新验证，待保存的资料已同步到云端。':'邮箱已重新验证，当前档案和修改已保留。';
+}
+async function verifyCode(event){
+  event.preventDefault();if(authBusy||!emailEnabled()||!otpEmail)return;if(!$('loginCode').reportValidity())return;
+  setAuthBusy(true);loginMessage('正在验证邮箱…');
+  try{
+    const user=await XunxuCloud.verifyCode(otpEmail,$('loginCode').value.trim());let message;
+    if(storageMode==='cloud'&&cloudReady&&currentUserId===user.id)message=await resumeCloudAfterReauth();
+    else{await activateCloud(user);message=storageMode==='cloud'?'邮箱登录成功，已读取你的云端档案。':'邮箱已验证，可继续试用并重试连接云端。'}
+    $('loginCode').value='';$('loginDialog').close();clearTimeout(otpTimer);toast(message);
+  }catch(error){loginMessage(error.message||'验证码无效或已过期，请重新发送。',true)}
+  finally{await setAuthBusy(false)}
+}
+async function signOut(){
+  if(authBusy||importBusy)return;
+  if(hasUnsavedChanges()&&!confirm('退出将清除当前页面尚未保存的资料和试用草稿。已经保存到云端的资料仍然保留。确定退出？'))return;
+  authBusy=true;$('cloudSignOut').disabled=true;setEditingEnabled(false);
+  try{
+    await XunxuCloud.signOut();++accountEpoch;currentUserId=null;activationUserId=null;authActivationPromise=null;savedGuestClient?.clear();savedGuestClient=null;trialImports.clear();otpEmail='';otpResendAt=0;$('loginEmail').value='';$('loginCode').value='';
+    if(storageMode==='guest')cloud.clear();await startGuest();toast('已退出账号，云端资料已从当前页面清除。');
+  }catch(error){storageError(error.message);setEditingEnabled(cloudReady)}
+  finally{authBusy=false;$('cloudSignOut').disabled=false;await reconcileAuthState();updateStorageCopy()}
+}
+async function startPublicApp(){
+  await startGuest();
+  if(!cloudConfigured())return;
+  try{const user=await XunxuCloud.init();if(user)await activateCloud(user)}catch(error){storageError('暂时无法恢复邮箱登录：'+error.message+' 你可以继续试用。')}
+  XunxuCloud.onAuthChange(()=>{reconcileAuthState().catch(error=>storageError(error.message))});
+}
+async function switchProfile(next){
+  if(!cloudReady||profileSwitching||next===activeProfileId)return;
+  const previous=activeProfileId,client=cloud,epoch=accountEpoch;profileSwitching=true;setEditingEnabled(false);
+  try{
+    saveProfileForm();clearTimeout(cloudSaveTimer);await client.flush(previous);if(epoch!==accountEpoch)return;cancelRecordDraft();await client.load(next);if(epoch!==accountEpoch)return;
+    loadProfileForm(next);updateDistanceMode();render();updateCloudStatus({profileId:next,...client.status(next)});
+  }catch(error){if(epoch===accountEpoch){$('profileSelect').value=previous;storageError(error.message);updateCloudStatus({status:error.code==='conflict'?'conflict':error.status===401?'unauthorized':'error',error})}}
+  finally{if(epoch===accountEpoch){profileSwitching=false;setEditingEnabled(cloudReady)}}
+}
+async function reloadCloud(){
+  if(storageMode==='guest')return;if(!cloudReady)return activateCloud(providerUser());if(profileSwitching)return;
+  if((cloud.hasUnsaved()||recordDraft?.dirty)&&!confirm('重新读取将放弃当前页面尚未保存的修改，使用云端最新版本。是否继续？'))return;
+  const client=cloud,owner=activeProfileId,epoch=accountEpoch;clearTimeout(cloudSaveTimer);clearTimeout(formUpdateTimer);profileSwitching=true;setEditingEnabled(false);
+  try{await client.load(owner,{discard:true});if(epoch!==accountEpoch)return;cancelRecordDraft();loadProfileForm(owner);updateDistanceMode();render();updateCloudStatus({profileId:owner,...client.status(owner)});toast('已读取云端最新资料。')}
+  catch(error){if(epoch===accountEpoch){storageError(error.message);updateCloudStatus({status:'error',error})}}
+  finally{if(epoch===accountEpoch){profileSwitching=false;setEditingEnabled(cloudReady)}}
 }
 
 // Boot and explicit UI events. Changing profiles cancels any unconfirmed upload.
-loadProfileRegistry();renderProfileOptions();loadProfileForm(activeProfileId);
-$('profileSelect').addEventListener('change',()=>{const next=$('profileSelect').value;saveProfileForm();loadProfileForm(next);updateDistanceMode();render()});
-$('addProfileButton').addEventListener('click',()=>{$('profileName').value='';$('profileName').setCustomValidity('');$('profileDialog').showModal();$('profileName').focus()});
+$('profileSelect').addEventListener('change',()=>switchProfile($('profileSelect').value));
+$('addProfileButton').addEventListener('click',()=>{if(!cloudReady)return;$('profileName').value='';$('profileName').setCustomValidity('');$('profileDialog').showModal();$('profileName').focus()});
 $('cancelProfileButton').addEventListener('click',()=>$('profileDialog').close());$('profileName').addEventListener('input',()=>$('profileName').setCustomValidity(''));
 $('profileForm').addEventListener('submit',event=>{event.preventDefault();createProfile()});
-$('plannerForm').addEventListener('submit',event=>{event.preventDefault();focusValidation=true;clearTimeout(formUpdateTimer);saveProfileForm();updatePersonalSummary();render();focusValidation=false;if($('generationStatus').textContent.startsWith('已更新'))$('summaryTitle').scrollIntoView({behavior:'smooth',block:'start'})});
+$('plannerForm').addEventListener('submit',async event=>{
+  event.preventDefault();if(!cloudReady)return;focusValidation=true;clearTimeout(formUpdateTimer);saveProfileForm();updatePersonalSummary();render();focusValidation=false;
+  clearTimeout(cloudSaveTimer);try{await cloud.flush(activeProfileId);if($('generationStatus').textContent.startsWith('已更新'))$('summaryTitle').scrollIntoView({behavior:'smooth',block:'start'})}catch{}
+});
 profileFieldIds.forEach(id=>{
-  const update=()=>{clearTimeout(formUpdateTimer);saveProfileForm();if(id==='distance')updateDistanceMode();updatePersonalSummary();render()};
+  const update=()=>{if(!cloudReady)return;clearTimeout(formUpdateTimer);saveProfileForm();if(id==='distance')updateDistanceMode();updatePersonalSummary();render()};
   $(id).addEventListener('change',update);
-  if($(id).tagName==='INPUT')$(id).addEventListener('input',()=>{saveProfileForm();const owner=activeProfileId;clearTimeout(formUpdateTimer);formUpdateTimer=setTimeout(()=>{if(owner===activeProfileId){updatePersonalSummary();render()}},350)});
+  if($(id).tagName==='INPUT')$(id).addEventListener('input',()=>{if(!cloudReady)return;saveProfileForm();const owner=activeProfileId,epoch=accountEpoch;clearTimeout(formUpdateTimer);formUpdateTimer=setTimeout(()=>{if(epoch===accountEpoch&&owner===activeProfileId){updatePersonalSummary();render()}},350)});
 });
 document.querySelectorAll('[data-tab]').forEach(button=>{button.addEventListener('click',()=>selectSetupTab(button.dataset.tab));button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const keys=['race','records','personal'],current=keys.indexOf(button.dataset.tab),next=event.key==='Home'?0:event.key==='End'?2:(current+(event.key==='ArrowRight'?1:2))%3;selectSetupTab(keys[next]);$('tab-'+keys[next]).focus()})});
 $('openRecords').addEventListener('click',()=>selectSetupTab('records'));
 $('uploadButton').addEventListener('click',()=>$('screenshotInput').click());$('screenshotInput').addEventListener('change',event=>handleUpload(event.target.files?.[0]));
 $('uploadZone').addEventListener('dragover',event=>{event.preventDefault();$('uploadZone').classList.add('dragging')});$('uploadZone').addEventListener('dragleave',()=>$('uploadZone').classList.remove('dragging'));
 $('uploadZone').addEventListener('drop',event=>{event.preventDefault();$('uploadZone').classList.remove('dragging');if(event.dataTransfer.files.length>1){toast('请逐张上传，以便核对每次成绩。');return}handleUpload(event.dataTransfer.files[0])});
-$('manualRecordButton').addEventListener('click',()=>freshRecordDraft());$('cancelRecordButton').addEventListener('click',cancelRecordDraft);$('closeRecordDialog').addEventListener('click',cancelRecordDraft);
-$('recordDialog').addEventListener('cancel',event=>{event.preventDefault();cancelRecordDraft()});$('recordForm').addEventListener('submit',saveRecord);
+$('manualRecordButton').addEventListener('click',()=>{if(cloudReady)freshRecordDraft()});$('cancelRecordButton').addEventListener('click',cancelRecordDraft);$('closeRecordDialog').addEventListener('click',cancelRecordDraft);
+$('recordDialog').addEventListener('cancel',event=>{event.preventDefault();cancelRecordDraft()});$('recordForm').addEventListener('submit',saveRecord);$('recordForm').addEventListener('input',()=>{if(recordDraft)recordDraft.dirty=true});$('recordForm').addEventListener('change',()=>{if(recordDraft)recordDraft.dirty=true});
 ['recordDistance','recordTime'].forEach(id=>$(id).addEventListener('input',updateRecordDerived));
 $('recordList').addEventListener('click',event=>{const edit=event.target.closest('[data-record-edit]'),remove=event.target.closest('[data-record-delete]');if(edit)editRecord(edit.dataset.recordEdit);if(remove)deleteRecord(remove.dataset.recordDelete)});
-$('weekList').addEventListener('click',event=>{
-  const button=event.target.closest('.checkin');if(!button||button.disabled)return;const date=button.dataset.date,done=button.getAttribute('aria-pressed')==='true',completed=!done,next={...checkins};if(completed)next[date]=true;else delete next[date];
-  try{localStorage.setItem(activeCheckinKey,JSON.stringify(next))}catch{storageError('打卡未能保存，请检查浏览器存储。');return}checkins=next;button.setAttribute('aria-pressed',String(completed));button.classList.toggle('done',completed);button.closest('.day')?.classList.toggle('completed',completed);button.textContent=completed?'已完成':'打卡';updateCheckinProgress();
-  if(lastAssessmentInput){lastAssessmentInput.adherence=readAdherence();lastAssessment=RunningAssessment.evaluate(lastAssessmentInput);renderGoalRisk(lastAssessment)}
+$('weekList').addEventListener('click',async event=>{
+  const button=event.target.closest('.checkin');if(!button||button.disabled||!cloudReady||profileSwitching)return;
+  const owner=activeProfileId,client=cloud,epoch=accountEpoch,planKey=activeCheckinKey,date=button.dataset.date,completed=button.getAttribute('aria-pressed')!=='true';button.disabled=true;
+  try{
+    await client.commit(owner,data=>{const plan=data.plans[planKey];if(!plan)throw new Error('请先保存训练计划后再打卡。');if(completed)plan.checkins[date]=true;else delete plan.checkins[date];return data;});
+    if(epoch!==accountEpoch||owner!==activeProfileId||planKey!==activeCheckinKey)return;
+    checkins={...cloud.getData(owner).plans[planKey].checkins};button.setAttribute('aria-pressed',String(completed));button.classList.toggle('done',completed);button.closest('.day')?.classList.toggle('completed',completed);button.textContent=completed?'已完成':'打卡';updateCheckinProgress();
+    if(lastAssessmentInput){lastAssessmentInput.adherence=readAdherence();lastAssessment=RunningAssessment.evaluate(lastAssessmentInput);renderGoalRisk(lastAssessment)}
+  }catch(error){if(epoch===accountEpoch)storageError(error.message)}finally{button.disabled=false}
 });
-window.addEventListener('storage',event=>{if(event.key===recordsStore.key(activeProfileId)){loadRecords();renderRecords();updatePersonalSummary();render()}});
-updateDistanceMode();render();
+$('cloudRetry').addEventListener('click',async()=>{if(!cloudReady)return activateCloud(providerUser());clearTimeout(cloudSaveTimer);try{await cloud.flush(activeProfileId);updateCloudStatus({profileId:activeProfileId,...cloud.status(activeProfileId)})}catch{}});
+$('cloudReload').addEventListener('click',reloadCloud);
+$('cloudSignIn').addEventListener('click',openLogin);$('cloudSignOut').addEventListener('click',signOut);
+$('closeLoginDialog').addEventListener('click',closeLogin);$('continueTrialButton').addEventListener('click',closeLogin);
+$('loginDialog').addEventListener('cancel',event=>{event.preventDefault();closeLogin()});
+$('sendCodeForm').addEventListener('submit',sendCode);$('verifyCodeForm').addEventListener('submit',verifyCode);
+$('importTrialButton').addEventListener('click',importTrial);
+
+window.addEventListener('beforeunload',event=>{if(hasUnsavedChanges()){event.preventDefault();event.returnValue='';}});
+startPublicApp();

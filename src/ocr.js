@@ -6,10 +6,7 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
   const MAX_FILE_BYTES = 12 * 1024 * 1024;
-  // Worker paths must be absolute while remaining within a Pages project path.
-  const ASSET_ROOT = typeof document !== 'undefined' && document.baseURI
-    ? new URL('./vendor/ocr', document.baseURI).href
-    : './vendor/ocr';
+  const ASSET_ROOT = typeof document !== 'undefined' ? new URL('./vendor/ocr', document.baseURI).href.replace(/\/$/, '') : '/planner/vendor/ocr';
   const labels = {
     distance: /(?:总距离|总里程|跑步距离|运动距离|距离|里程|distance)/i,
     duration: /(?:净(?:计)?时(?:成绩)?|完赛(?:时间|用时|成绩)|芯片(?:时间|成绩)|总(?:用时|时长|时间)|运动(?:用时|时间|时长)|持续时间|耗时|用时|duration|elapsed\s*time|moving\s*time|chip\s*time|net\s*time|finish(?:ing)?\s*time)/i,
@@ -201,7 +198,7 @@
     const job = (async () => {
       worker = await Tesseract.createWorker(['eng', 'chi_sim'], 1, {
         workerPath: `${ASSET_ROOT}/worker.min.js`, corePath: `${ASSET_ROOT}/core`, langPath: `${ASSET_ROOT}/lang`,
-        gzip: true, workerBlobURL: false, cacheMethod: 'write', cachePath: 'xunxu-ocr-v1',
+        gzip: true, workerBlobURL: false, cacheMethod: 'none',
         logger: m => { const isText = m.status === 'recognizing text'; progress(isText ? .35 + (m.progress || 0) * .6 : .1 + (m.progress || 0) * .2, isText ? '正在读取成绩和心率' : '正在加载中英文模型'); },
         errorHandler: () => {}
       });
