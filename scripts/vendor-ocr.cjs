@@ -1,16 +1,40 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const root = path.resolve(__dirname, '..');
-const out = path.join(root, 'dist/vendor/ocr');
-fs.mkdirSync(path.join(out, 'core'), {recursive:true});
-fs.mkdirSync(path.join(out, 'lang'), {recursive:true});
-for (const name of ['tesseract.min.js','worker.min.js','tesseract.min.js.LICENSE.txt','worker.min.js.LICENSE.txt']) fs.copyFileSync(path.join(root,'node_modules/tesseract.js/dist',name), path.join(out,name));
-for (const name of fs.readdirSync(path.join(root,'node_modules/tesseract.js-core'))) {
-  // The wasm.js bundles embed their wasm bytecode; separate .wasm files are unnecessary.
-  if (name.endsWith('.wasm.js') || name === 'LICENSE') fs.copyFileSync(path.join(root,'node_modules/tesseract.js-core',name),path.join(out,'core',name));
+
+function vendorOcr({projectRoot = path.resolve(__dirname, '..')} = {}) {
+  const modules = path.join(projectRoot, 'node_modules');
+  const output = path.join(projectRoot, 'dist/vendor/ocr');
+  fs.rmSync(output, {recursive: true, force: true});
+  fs.mkdirSync(path.join(output, 'core'), {recursive: true});
+  fs.mkdirSync(path.join(output, 'lang'), {recursive: true});
+  for (const name of ['tesseract.min.js', 'worker.min.js', 'tesseract.min.js.LICENSE.txt', 'worker.min.js.LICENSE.txt']) {
+    fs.copyFileSync(path.join(modules, 'tesseract.js/dist', name), path.join(output, name));
+  }
+  for (const name of fs.readdirSync(path.join(modules, 'tesseract.js-core'))) {
+    // Each wasm.js bundle includes its own WebAssembly bytes.
+    if (name.endsWith('.wasm.js') || name === 'LICENSE') {
+      fs.copyFileSync(path.join(modules, 'tesseract.js-core', name), path.join(output, 'core', name));
+    }
+  }
+  fs.copyFileSync(path.join(modules, 'tesseract.js/LICENSE.md'), path.join(output, 'TESSERACT-LICENSE.md'));
+  for (const lang of ['eng', 'chi_sim']) {
+    fs.copyFileSync(
+      path.join(modules, '@tesseract.js-data', lang, '4.0.0_best_int', lang + '.traineddata.gz'),
+      path.join(output, 'lang', lang + '.traineddata.gz'),
+    );
+  }
+  const version = name => JSON.parse(fs.readFileSync(path.join(modules, name, 'package.json'), 'utf8')).version;
+  fs.writeFileSync(path.join(output, 'README.txt'),
+    'Self-hosted Tesseract.js ' + version('tesseract.js') + ' and tesseract.js-core ' + version('tesseract.js-core') + ' (Apache-2.0).\n'
+    + 'Language packages: eng ' + version('@tesseract.js-data/eng') + ', chi_sim ' + version('@tesseract.js-data/chi_sim') + '; 4.0.0_best_int models.\n'
+    + 'Recognition runs in the browser; no image is sent to a third-party OCR service.\n'
+    + 'Sources: https://github.com/naptha/tesseract.js and https://github.com/naptha/tessdata\n'
+    + 'Regenerate with npm ci && npm run build.\n');
+  return output;
 }
-fs.copyFileSync(path.join(root,'node_modules/tesseract.js/LICENSE.md'),path.join(out,'TESSERACT-LICENSE.md'));
-for (const lang of ['eng','chi_sim']) fs.copyFileSync(path.join(root,`node_modules/@tesseract.js-data/${lang}/4.0.0_best_int/${lang}.traineddata.gz`),path.join(out,'lang',`${lang}.traineddata.gz`));
-fs.copyFileSync(path.join(root,'src/ocr.js'),path.join(root,'dist/ocr.js'));
-fs.writeFileSync(path.join(out, 'README.txt'), 'Self-hosted Tesseract.js 7.0.0 and tesseract.js-core 7.0.0 (Apache-2.0).\nLanguage models: @tesseract.js-data/eng and @tesseract.js-data/chi_sim 1.0.0 (MIT package license), 4.0.0_best_int.\nNo images are sent to remote OCR services.\nSources: https://github.com/naptha/tesseract.js and https://github.com/naptha/tessdata\nRegenerate with npm ci && npm run vendor:ocr.\n');
-console.log('Copied browser OCR engine, embedded wasm cores, and Chinese/English models.');
+
+if (require.main === module) {
+  vendorOcr();
+  console.log('Copied OCR runtime, embedded WebAssembly cores and Chinese/English models.');
+}
+module.exports = {vendorOcr};
