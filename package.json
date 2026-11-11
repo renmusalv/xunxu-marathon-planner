@@ -1,8 +1,8 @@
 {
   "name": "xunxu-endurance-planner",
   "private": true,
-  "version": "1.1.0",
-  "description": "Browser-local endurance planner with self-hosted screenshot OCR",
+  "version": "3.0.0",
+  "description": "Public running planner with private email-authenticated cloud profiles and self-hosted screenshot OCR",
   "scripts": {
     "vendor:ocr": "node scripts/vendor-ocr.cjs",
     "test:ocr": "node --test tests/ocr.test.cjs",
@@ -10,8 +10,15 @@
     "test": "node --test tests/*.test.cjs"
   },
   "devDependencies": {
-    "tesseract.js": "7.0.0",
+    "@electric-sql/pglite": "0.5.16",
+    "@tesseract.js-data/chi_sim": "1.0.0",
     "@tesseract.js-data/eng": "1.0.0",
-    "@tesseract.js-data/chi_sim": "1.0.0"
+    "tesseract.js": "7.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.119.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

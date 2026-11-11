@@ -27,9 +27,14 @@
   <main class="shell">
     <header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true">∿</div><span>循序 <span style="font-weight:450;color:#89938b">/ ENDURANCE PLANNER</span></span></div><div class="top-meta"><i class="live-dot"></i>目标决定课表 · 实绩评估难度</div></header>
     <section class="intro"><div><div class="eyebrow">MARATHON TRAINING BUILDER</div><h1>把比赛目标，拆解成每周训练。</h1><p>按目标生成课表，用真实成绩与个人资料，判断完成难度和适合当前能力的配速。</p></div><div class="basis-pill">目标课表 + 能力建议 · 独立档案</div></section>
+    <section class="cloud-banner" id="cloudBanner" data-state="guest" aria-label="档案保存状态">
+      <div class="cloud-status-copy"><span class="cloud-symbol" aria-hidden="true">☁</span><div><strong id="cloudState" role="status">公开试用 · 无需 ChatGPT 账号</strong><small id="cloudDetail"><span id="cloudIdentity">试用资料仅在当前页面</span><span id="cloudStorageHint"> · 登录邮箱后可保存到云端</span></small></div></div>
+      <div class="cloud-actions"><button type="button" id="cloudRetry" hidden>重试保存</button><button type="button" id="cloudReload" hidden>重新读取云端</button><button type="button" id="cloudSignIn">邮箱登录保存</button><button type="button" id="cloudSignOut" hidden>退出账号</button></div>
+    </section>
+    <section class="trial-import" id="trialImport" hidden aria-label="保存登录前的试用资料"><div><strong>登录前的试用资料仍在当前页面</strong><p>可另存为新的云端档案，现有档案不会被覆盖。</p></div><div class="trial-import-actions"><select id="trialProfileSelect" aria-label="选择要保存的试用档案"></select><button type="button" id="importTrialButton">保存试用档案</button></div><p class="form-error" id="trialImportError" role="alert" hidden></p></section>
     <div class="layout" id="customPlan">
       <form id="plannerForm" class="panel" aria-label="计划设置" novalidate><div class="panel-head"><h2>你的训练档案</h2><span class="step">01 — SETUP</span></div>
-        <div class="profile-field"><label for="profileSelect">当前训练档案</label><div class="profile-row"><select id="profileSelect" aria-label="切换训练档案"></select><button id="addProfileButton" type="button" class="profile-add">＋ 新档案</button></div><small>比赛、截图、个人资料和打卡分别保存。仅在此浏览器可用。</small></div>
+        <div class="profile-field"><label for="profileSelect">当前训练档案</label><div class="profile-row"><select id="profileSelect" aria-label="切换训练档案"></select><button id="addProfileButton" type="button" class="profile-add">＋ 新档案</button></div><small id="profileStorageHint">各试用档案相互独立；登录邮箱后可另存到云端。</small></div>
         <div class="setup-tabs" role="tablist" aria-label="档案资料分类">
           <button type="button" role="tab" id="tab-race" aria-controls="panel-race" aria-selected="true" data-tab="race">比赛与基础</button>
           <button type="button" role="tab" id="tab-records" aria-controls="panel-records" aria-selected="false" tabindex="-1" data-tab="records">成绩资料 <span id="recordCount">0</span></button>
@@ -52,7 +57,7 @@
             <button type="button" id="uploadButton" class="upload-button">选择图片</button><small>或拖放图片至此 · JPG / PNG / WebP · 最大 12 MB</small>
             <input id="screenshotInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
           </div>
-          <p class="local-note">图片在本机识别，核对后保存到当前档案。首次识别稍久；不会发送到第三方识别服务。</p>
+          <p class="local-note" id="recordStorageHint">截图在当前设备识别，不发送给第三方识别服务。试用成绩仅在当前页面保留，登录后可保存到云端。</p>
           <button type="button" class="text-button" id="manualRecordButton">＋ 手动添加一条成绩</button>
           <div class="records-heading"><h4>本档案成绩</h4><span id="recordsCaption">0 条</span></div>
           <div id="recordList" class="record-list"></div>
@@ -77,7 +82,7 @@
         </div>
         <p id="storageStatus" class="storage-status" role="status" hidden></p>
         <div class="hintline"><strong id="goalTimeHint">目标配速与完赛时间会自动换算。</strong>轻松跑以能完整交谈的体感为准。</div>
-        <button class="generate" id="generate" type="submit">生成训练计划 <span aria-hidden="true">↗</span></button><p id="generationStatus" class="fineprint" role="status">设定目标即可查看课表；补充成绩后显示个人难度与建议。</p><p class="fineprint">本机档案用于区分同一浏览器中的训练数据，不是登录验证；清除浏览器数据会删除这些档案。</p><p class="fineprint">计划是训练参考，不替代教练或医疗建议。若持续疼痛、胸闷、眩晕或不适，请停止训练并寻求专业评估。</p>
+        <button class="generate" id="generate" type="submit">生成训练计划 <span aria-hidden="true">↗</span></button><p id="generationStatus" class="fineprint" role="status">设定目标即可查看课表；补充成绩后显示个人难度与建议。</p><p class="fineprint">试用资料只在当前页面暂存，刷新或关闭后会丢失。邮箱登录后，资料修改自动保存到云端；浏览器只保留登录凭据，不保存训练资料。</p><p class="fineprint">计划是训练参考，不替代教练或医疗建议。若持续疼痛、胸闷、眩晕或不适，请停止训练并寻求专业评估。</p>
       </form>
       <section class="work" aria-live="polite"><div class="summary"><div><div class="summary-label">YOUR RACE PLAN</div><h2 id="summaryTitle">16 周马拉松训练周期</h2><div class="summary-copy" id="summaryCopy">建立耐力 → 提升专项能力 → 逐步减量 · 每周保留恢复空间</div></div><div class="time-block"><strong id="finishTime">3:55:00</strong><span>目标完赛时间</span></div></div>
         <div class="metrics"><div class="metric"><span>到比赛还有</span><strong id="weeksMetric">16 周</strong><em id="daysMetric">112 天</em></div><div class="metric"><span>计划峰值周</span><strong id="peakMetric">— km</strong></div><div class="metric"><span>最长训练跑</span><strong id="longMetric">— km</strong></div><div class="metric"><span>质量训练</span><strong id="qualityMetric">—</strong></div><div class="metric metric-completion"><span>计划打卡完成度</span><strong id="planCompletionMetric">—</strong><em id="planCompletionDetail">尚未开始</em><div class="completion-track" role="progressbar" aria-label="训练计划完成度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="planCompletionBar"></i></div></div></div>
@@ -105,7 +110,7 @@
           <details class="template-details"><summary>查看课表逻辑、日期安排与难度判断规则</summary><div id="templateNotes"></div><p id="difficultyMethod"></p></details>
         </section>
         <div class="phase-row" id="phaseRow"></div>
-        <div class="schedule-head"><h3>逐周训练安排</h3><span id="progressSummary">计划完成度按应完成的跑步与力量训练统计 · 暂存在此浏览器</span></div>
+        <div class="schedule-head"><h3>逐周训练安排</h3><span id="progressSummary">计划完成度按应完成的跑步与力量训练统计 · 打卡保存于云端</span></div>
         <div class="week-list" id="weekList"></div>
         <div class="method"><div class="method-card"><h4>目标课表与个人建议分别展示</h4><p>课表主配速随目标时间变化。半马 1:45 对应参考图的七周专项结构；个人成绩、心率与训练基础用于旁注建议和难度判断。训练卡同时保留目标要求与当前能力建议，方便选择适合自己的执行强度。</p></div><div class="method-card"><h4>专项检验与赛前减量</h4><p>半马参考图在第 4 周安排 16K 专项自测，第 6、7 周逐步减量。完成自测可提供专项准备的线索，不能保证比赛达标。周期不足时只展示剩余周次，不补课；时间充裕时另列衔接期。</p></div></div>
         <footer class="source">课表来源：用户提供的《半马145冲刺课表》。1:45 保留图中课程、时长、距离和基准配速；其他半马目标按目标配速差平移，是模板推算。图示适用基础约为 10K 49:30、半马 1:50、周跑量 30km+，作为判断参考。个人配速与难度估算不是实测阈值或成功概率。评估依据与适用范围可在“查看判断方法与研究依据”中展开。</footer>
@@ -113,7 +118,7 @@
     </div>
 
   </main>
-  <dialog class="profile-dialog" id="profileDialog" aria-labelledby="profileDialogTitle"><form id="profileForm"><h2 id="profileDialogTitle">新建训练档案</h2><p>单独保存比赛设置、成绩截图、个人资料和训练打卡。</p><label for="profileName">档案名称</label><input id="profileName" type="text" maxlength="24" placeholder="例如：Jojo" required/><div class="profile-dialog-actions"><button type="button" id="cancelProfileButton" class="profile-cancel">取消</button><button type="submit" class="generate">保存并切换</button></div></form></dialog>
+  <dialog class="profile-dialog" id="profileDialog" aria-labelledby="profileDialogTitle"><form id="profileForm"><h2 id="profileDialogTitle">新建训练档案</h2><p>单独保存比赛设置、成绩截图、个人资料和训练打卡。</p><label for="profileName">档案名称</label><input id="profileName" type="text" maxlength="24" placeholder="例如：Jojo" required/><div class="profile-dialog-actions"><button type="button" id="cancelProfileButton" class="profile-cancel">取消</button><button type="submit" class="generate" id="createProfileSubmit">保存并切换</button></div></form></dialog>
   <dialog class="record-dialog" id="recordDialog" aria-labelledby="recordDialogTitle">
     <form id="recordForm" novalidate>
       <header class="record-dialog-head"><div><div class="eyebrow">PERFORMANCE RECORD</div><h2 id="recordDialogTitle">核对这次跑步成绩</h2><p>保存到 <strong id="recordOwner"></strong> · 核对后参与能力评估</p></div><button type="button" class="icon-button" id="closeRecordDialog" aria-label="关闭成绩窗口">×</button></header>
@@ -135,11 +140,25 @@
       <footer class="record-dialog-actions"><button type="button" class="secondary-button" id="cancelRecordButton">取消</button><button type="submit" class="primary-button" id="saveRecordButton">确认数据并保存</button></footer>
     </form>
   </dialog>
+  <dialog id="loginDialog" class="login-dialog" aria-labelledby="loginTitle">
+    <header class="login-head"><div><div class="eyebrow">YOUR TRAINING, ANYWHERE</div><h2 id="loginTitle">用邮箱保存训练档案</h2></div><button type="button" id="closeLoginDialog" class="icon-button" aria-label="关闭邮箱登录">×</button></header>
+    <p class="login-intro">无需 ChatGPT 账号。验证邮箱后，个人资料、成绩截图和打卡可自动保存，并在其他设备继续使用。</p>
+    <div id="loginUnavailable" class="login-unavailable" hidden><strong>邮箱云服务正在接入</strong><p>目前可以公开试用全部课表与能力评估。试用资料仅在当前页面，刷新或关闭后会丢失；云服务开通后，即可通过邮箱验证保存资料。</p><a href="https://xunxu-marathon-planner.smart-bean-0955.chatgpt.site/planner/index.html" target="_blank" rel="noopener noreferrer">查看原有云端档案 ↗</a><small>原有入口仍使用原账号登录，已有资料保留在那里。</small></div>
+    <form id="sendCodeForm" class="login-form"><label for="loginEmail">邮箱地址</label><input id="loginEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" maxlength="254" required /><button type="submit" id="sendCodeButton" class="primary-button">发送验证码</button></form>
+    <form id="verifyCodeForm" class="login-form" hidden><label for="loginCode">邮箱验证码</label><input id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" minlength="6" maxlength="10" placeholder="输入邮件中的验证码" required /><small id="codeEmailHint"></small><button type="submit" id="verifyCodeButton" class="primary-button">验证并登录</button></form>
+    <p id="loginMessage" class="login-message" role="status" hidden></p>
+    <p class="login-footnote">验证码只用于登录。登录前的试用资料会保留，是否上传由你选择。</p>
+    <button type="button" id="continueTrialButton" class="secondary-button login-continue">继续试用</button>
+  </dialog>
   <div class="toast" id="toast" role="status" hidden></div>
+  <script src="./cloud-config.js" defer></script>
+  <script src="./vendor/supabase/supabase.js" defer></script>
+  <script src="./supabase-cloud.js" defer></script>
   <script src="./assessment.js" defer></script>
   <script src="./target-plan.js" defer></script>
   <script src="./session-advice.js" defer></script>
   <script src="./profile-store.js" defer></script>
+  <script src="./guest-store.js" defer></script>
   <script src="./ocr.js" defer></script>
   <script src="./app.js" defer></script>
 
