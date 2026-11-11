@@ -1,110 +1,47 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-const ProfileStore = require('../src/profile-store.js');
-const RunningAssessment = require('../src/assessment.js');
-const TargetPlan = require('../src/target-plan.js');
-const SessionAdvice = require('../src/session-advice.js');
-
-const FIXED_NOW = Date.UTC(2026, 10, 11, 12);
-
-function makeElement(value = '') {
-  const attrs = new Map();
-  const classes = new Set();
-  return {
-    value, textContent: '', innerHTML: '', hidden: false, open: false,
-    dataset: {}, style: {},
-    classList: {
-      add(name) { classes.add(name); },
-      remove(name) { classes.delete(name); },
-      contains(name) { return classes.has(name); },
-      toggle(name, force) { if (force ?? !classes.has(name)) classes.add(name); else classes.delete(name); },
-    },
-    setAttribute(name, value) { attrs.set(name, value); },
-    getAttribute(name) { return attrs.get(name) ?? null; },
-    addEventListener() {}, focus() {}, scrollIntoView() {},
-    parentElement: { setAttribute() {} },
-  };
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const RealProfileStore=require('../src/profile-store.js');
+const RunningAssessment=require('../src/assessment.js');
+const TargetPlan=require('../src/target-plan.js');
+const SessionAdvice=require('../src/session-advice.js');
+const clone=v=>JSON.parse(JSON.stringify(v));
+const FIXED_NOW=Date.UTC(2026,10,11,12);
+const checkinKey=id=>'xunxu-checkins-v1:half-target-v1:2027-02-01:6300'+(id==='default'?'':':profile:'+id);
+function makeElement(value=''){
+ const attrs=new Map(),classes=new Set();return {value,textContent:'',innerHTML:'',hidden:false,open:false,dataset:{},style:{},disabled:false,
+ classList:{add:n=>classes.add(n),remove:n=>classes.delete(n),contains:n=>classes.has(n),toggle(n,force){if(force??!classes.has(n))classes.add(n);else classes.delete(n)}},
+ setAttribute:(n,v)=>attrs.set(n,v),getAttribute:n=>attrs.get(n)??null,removeAttribute:n=>attrs.delete(n),addEventListener(){},focus(){},scrollIntoView(){},parentElement:{setAttribute(){}}};
 }
-
-function harness() {
-  let clockNow = FIXED_NOW;
-  class FixedDate extends Date {
-    constructor(...args) { super(...(args.length ? args : [clockNow])); }
-    static now() { return clockNow; }
-  }
-  const data = new Map();
-  const writes = [];
-  const localStorage = {
-    getItem(key) { return data.get(key) ?? null; },
-    setItem(key, value) { data.set(key, String(value)); writes.push(key); },
-    removeItem(key) { data.delete(key); },
-  };
-  const elements = new Map();
-  function element(id) {
-    if (!elements.has(id)) elements.set(id, makeElement());
-    return elements.get(id);
-  }
-  let workoutDates = null;
-  const document = {
-    getElementById: element,
-    querySelector() { return null; },
-    querySelectorAll(selector) {
-      if (selector === '#weekList .checkin[data-workout="true"]') {
-        if (workoutDates) return workoutDates.map(date => ({ dataset: { date }, getAttribute: () => 'false' }));
-        return [...element('weekList').innerHTML.matchAll(/<button\b([^>]*)>/g)]
-          .filter(match => /data-workout="true"/.test(match[1]))
-          .map(match => {
-            const attrs = Object.fromEntries([...match[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(attr => [attr[1], attr[2]]));
-            return { dataset: { date: attrs['data-date'] }, getAttribute: key => attrs[key] ?? null };
-          });
-      }
-      return [];
-    },
-  };
-  const defaults = {
-    distance: '21.0975', raceDate: '2027-02-01', halfGoalTime: '01:45:00',
-    paceMin: '5', paceSec: '0', weeklyKm: '28', days: '4', longRun: '12',
-    maxHrSource: 'measured', thresholdHrSource: 'measured', vo2maxSource: 'watch',
-  };
-  for (const [id, value] of Object.entries(defaults)) element(id).value = value;
-  const context = vm.createContext({
-    document, localStorage, ProfileStore, RunningAssessment, TargetPlan, SessionAdvice,
-    Date: FixedDate, setTimeout, clearTimeout,
-  });
-  const source = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
-  const marker = '// Boot and explicit UI events.';
-  assert.ok(source.includes(marker), 'The app boot marker must exist so event setup is never executed by this harness.');
-  vm.runInContext(source.slice(0, source.indexOf(marker)) + `
-    globalThis.__appTest = {
-      render, savePlanHistory, readAdherence, validatePersonal, saveProfileForm, loadProfileForm,
-      setState(state) {
-        if ('profileId' in state) activeProfileId = state.profileId;
-        if ('checkinKey' in state) activeCheckinKey = state.checkinKey;
-        if ('startDate' in state) activePlanStartDate = state.startDate;
-        if ('records' in state) currentRecords = state.records;
-      }
-    };
-  `, context, { filename: 'src/app.js' });
-  // app.js initializes its default date; choose a fixed future date for tests.
-  element('raceDate').value = defaults.raceDate;
-  return {
-    api: context.__appTest, data, writes, element, localStorage,
-    records: ProfileStore.createStore(localStorage),
-    setWorkouts(dates) { workoutDates = dates; },
-    advanceDays(days) { clockNow += days * 86400000; },
-    save(key, value) { localStorage.setItem(key, JSON.stringify(value)); },
-    read(key) { return JSON.parse(localStorage.getItem(key) || 'null'); },
-  };
+function harness(){
+ let clockNow=FIXED_NOW;class FixedDate extends Date{constructor(...a){super(...(a.length?a:[clockNow]));}static now(){return clockNow}}
+ const documents=new Map(),writes=[],elements=new Map();
+ function data(id='default'){if(!documents.has(id))documents.set(id,{form:{},records:[],plans:{},history:[]});return documents.get(id)}
+ function element(id){if(!elements.has(id))elements.set(id,makeElement());return elements.get(id)}
+ let workoutDates=null;const document={getElementById:element,querySelector(){return null},querySelectorAll(selector){
+ if(selector==='#weekList .checkin[data-workout="true"]'){
+  if(workoutDates)return workoutDates.map(date=>({dataset:{date},getAttribute:()=> 'false'}));
+  return [...element('weekList').innerHTML.matchAll(/<button\b([^>]*)>/g)].filter(m=>/data-workout="true"/.test(m[1])).map(m=>{const a=Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(x=>[x[1],x[2]]));return{dataset:{date:a['data-date']},getAttribute:key=>a[key]??null}});
+ }return[];}};
+ const client={getData:id=>clone(data(id)),getProfile:id=>({id,name:id,data:clone(data(id)),revision:1}),isLoaded:id=>documents.has(id),
+ stage(id,fn){const before=JSON.stringify(data(id)),next=fn(clone(data(id)));if(before===JSON.stringify(next))return false;documents.set(id,clone(next));writes.push(id);return true},
+ commit(id,fn){documents.set(id,clone(fn(clone(data(id)))));writes.push(id);return Promise.resolve({profile:this.getProfile(id)})},
+ flush(){return Promise.resolve()},hasUnsaved(){return false},status(){return{status:'saved',dirty:false}},profiles(){return [...documents.keys()].map(id=>({id,name:id}))}};
+ const ProfileStore={...RealProfileStore,createClient:()=>client};
+ const defaults={distance:'21.0975',raceDate:'2027-02-01',halfGoalTime:'01:45:00',paceMin:'5',paceSec:'0',weeklyKm:'28',days:'4',longRun:'12',maxHrSource:'measured',thresholdHrSource:'measured',vo2maxSource:'watch'};
+ for(const[id,value]of Object.entries(defaults))element(id).value=value;
+ const context=vm.createContext({document,ProfileStore,RunningAssessment,TargetPlan,SessionAdvice,Date:FixedDate,setTimeout:()=>0,clearTimeout(){}});
+ const source=fs.readFileSync(path.join(__dirname,'../src/app.js'),'utf8'),marker='// Boot and explicit UI events.';assert.ok(source.includes(marker));
+ vm.runInContext(source.slice(0,source.indexOf(marker))+`
+ cloudReady=true;
+ globalThis.__appTest={render,savePlanHistory,readAdherence,validatePersonal,saveProfileForm,loadProfileForm,updateCloudStatus,hasUnsavedChanges,
+ setState(state){if('profileId'in state)activeProfileId=state.profileId;if('checkinKey'in state)activeCheckinKey=state.checkinKey;if('startDate'in state)activePlanStartDate=state.startDate;if('records'in state)currentRecords=state.records;if('draft'in state)recordDraft=state.draft;}};
+ `,context,{filename:'src/app.js'});
+ element('raceDate').value=defaults.raceDate;
+ return{api:context.__appTest,element,data,writes,client,history:id=>data(id).history.at(-1),setWorkouts:dates=>{workoutDates=dates},advanceDays:days=>{clockNow+=days*86400000}};
 }
-
-const historyKey = id => 'xunxu-plan-evidence-v2:' + id;
-const checkinKey = id => 'xunxu-checkins-v1:half-target-v1:2027-02-01:6300' + (id === 'default' ? '' : ':profile:' + id);
-
-// Extract complete nested divs so comparisons include the whole target
-// prescription while excluding the separate, intentionally changing advice.
 function divBlocks(html, matchesOpeningTag) {
   const result = [], tags = /<\/?div\b[^>]*>/g;
   let tag;
@@ -127,118 +64,34 @@ const record = (overrides = {}) => ({
   ...overrides,
 });
 
-function assertGeneratedPlan(h, profileId = 'default') {
-  assert.ok(targetBlocks(h).length > 0, 'A valid target must produce target prescription blocks.');
-  assert.match(h.element('weekList').innerHTML, /data-workout="true"/);
-  assert.doesNotMatch(h.element('weekList').innerHTML, /信息未通过检查/);
-  const history = h.read(historyKey(profileId));
-  assert.equal(history.profileId, profileId);
-  assert.ok(history.dates.length > 0);
-  assert.equal(h.localStorage.getItem(history.checkinKey + ':started'), history.startDate);
-  return history;
+function assertGeneratedPlan(h,profileId='default'){
+ assert.match(h.element('weekList').innerHTML,/class="week(?:\s|")/);assert.match(h.element('generationStatus').textContent,/已更新/);
+ const history=h.history(profileId);assert.ok(history);assert.ok(history.dates.length>0);assert.equal(h.data(profileId).plans[history.planKey].started,history.started);
+ return{checkinKey:history.planKey,startDate:history.started,dates:history.dates};
 }
+function assertNoGeneratedPlan(h){assert.doesNotMatch(h.element('weekList').innerHTML,/class="week(?:\s|")/);assert.equal(h.writes.length,0);}
 
-test('same-plan regeneration retains past workout dates and replaces future dates', () => {
-  const h = harness();
-  const key = checkinKey('runner-a');
-  h.save(historyKey('runner-a'), {
-    profileId: 'runner-a', startDate: '2026-11-03', checkinKey: key,
-    dates: ['2026-11-04', '2026-11-09', '2026-11-11', '2026-11-12', '2026-11-14'],
-  });
-  h.api.setState({ profileId: 'runner-a', checkinKey: key, startDate: '2026-11-03' });
-  h.setWorkouts(['2026-11-11', '2026-11-13', '2026-11-13', '2026-11-15']);
-  h.api.savePlanHistory();
-  assert.deepEqual(h.read(historyKey('runner-a')), {
-    profileId: 'runner-a', startDate: '2026-11-03', checkinKey: key,
-    dates: ['2026-11-04', '2026-11-09', '2026-11-11', '2026-11-13', '2026-11-15'],
-  });
-  assert.equal(h.localStorage.getItem(key + ':started'), '2026-11-03');
+test('cloud history preserves past dates and updates future dates without write storms',()=>{
+ const h=harness(),id='runner-a',key='xunxu-checkins-v1:half-target-v1:2027-02-01:6300:profile:runner-a';
+ h.data(id).history=[{planKey:key,started:'2026-11-03',dates:['2026-11-05','2026-11-20']}];h.data(id).plans[key]={started:'2026-11-03',checkins:{'2026-11-05':true}};
+ h.api.setState({profileId:id,checkinKey:key,startDate:'2026-11-03'});h.setWorkouts(['2026-11-11','2026-11-12']);h.api.savePlanHistory();
+ assert.deepEqual(h.history(id).dates,['2026-11-05','2026-11-11','2026-11-12']);const writes=h.writes.length;h.api.savePlanHistory();assert.equal(h.writes.length,writes);
+ assert.equal(h.data(id).plans[key].checkins['2026-11-05'],true);
 });
-
-test('a different plan key does not inherit the previous plan past dates', () => {
-  const h = harness();
-  const key = checkinKey('runner-a');
-  h.save(historyKey('runner-a'), {
-    profileId: 'runner-a', startDate: '2026-11-01', checkinKey: key + '-old', dates: ['2026-11-05'],
-  });
-  h.api.setState({ profileId: 'runner-a', checkinKey: key, startDate: '2026-11-11' });
-  h.setWorkouts(['2026-11-12']);
-  h.api.savePlanHistory();
-  assert.deepEqual(h.read(historyKey('runner-a')).dates, ['2026-11-12']);
+test('adherence reads only the active cloud profile and active plan and counts past dates',()=>{
+ const h=harness(),key='plan-a';h.data('a').history=[{planKey:key,started:'2026-11-03',dates:['2026-11-02','2026-11-05','2026-11-05','2026-11-10','2026-11-11']}];h.data('a').plans[key]={started:'2026-11-03',checkins:{'2026-11-05':true,'2026-11-10':'true','2026-11-11':true}};
+ h.api.setState({profileId:'a',checkinKey:key});const a=h.api.readAdherence();assert.equal(a.due,2);assert.equal(a.completed,1);
+ h.api.setState({profileId:'b',checkinKey:key});assert.equal(h.api.readAdherence(),null);
+ h.api.setState({profileId:'a',checkinKey:'different-plan'});assert.equal(h.api.readAdherence(),null);
 });
-
-test('saving plan history leaves another profile history and check-ins unchanged', () => {
-  const h = harness();
-  const aKey = checkinKey('runner-a'), bKey = checkinKey('runner-b');
-  h.save(historyKey('runner-b'), {
-    profileId: 'runner-b', startDate: '2026-11-01', checkinKey: bKey, dates: ['2026-11-03', '2026-11-13'],
-  });
-  h.save(bKey, { '2026-11-03': true });
-  h.localStorage.setItem(bKey + ':started', '2026-11-01');
-  const before = [historyKey('runner-b'), bKey, bKey + ':started'].map(key => h.localStorage.getItem(key));
-  h.api.setState({ profileId: 'runner-a', checkinKey: aKey, startDate: '2026-11-11' });
-  h.setWorkouts(['2026-11-12', '2026-11-15']);
-  h.api.savePlanHistory();
-  const after = [historyKey('runner-b'), bKey, bKey + ':started'].map(key => h.localStorage.getItem(key));
-  assert.deepEqual(after, before);
+test('cloud form staging captures the active owner and never changes another profile',()=>{
+ const h=harness();h.data('b').form={restingHr:'70'};h.api.setState({profileId:'a'});h.element('restingHr').value='52';h.api.saveProfileForm();assert.equal(h.data('a').form.restingHr,'52');assert.equal(h.data('b').form.restingHr,'70');
 });
-
-test('adherence counts unique past due dates from plan start and only boolean completed checks', () => {
-  const h = harness(), key = checkinKey('runner-a');
-  h.api.setState({ profileId: 'runner-a' });
-  h.save(historyKey('runner-a'), {
-    profileId: 'runner-a', checkinKey: key, startDate: '2026-11-05',
-    dates: ['2026-11-01', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-07', '2026-11-10', '2026-11-11', '2026-11-12'],
-  });
-  h.save(key, {
-    '2026-11-01': true, '2026-11-05': true, '2026-11-06': false,
-    '2026-11-07': true, '2026-11-10': 1, '2026-11-11': true, '2026-11-12': true,
-  });
-  const result = h.api.readAdherence();
-  assert.equal(result.due, 4);
-  assert.equal(result.completed, 2);
-  assert.ok(result.completed <= result.due);
+test('failed explicit mutations never show a generic retry-saved path',()=>{
+ const h=harness();h.api.updateCloudStatus({status:'error',error:{message:'网络失败',source:'action'},dirty:false,retryable:false});assert.equal(h.element('cloudRetry').hidden,true);assert.match(h.element('cloudState').textContent,/重新执行/);
+ h.api.updateCloudStatus({status:'conflict',error:{message:'版本冲突'},dirty:true});assert.equal(h.element('cloudRetry').hidden,true);assert.equal(h.element('cloudReload').hidden,false);
+ h.api.updateCloudStatus({status:'unauthorized',error:{message:'登录过期'}});assert.equal(h.element('cloudSignIn').hidden,false);
 });
-
-test('a new plan with only today and future dates has no due adherence sessions', () => {
-  const h = harness(), key = checkinKey('default');
-  h.save(historyKey('default'), {
-    profileId: 'default', checkinKey: key, startDate: '2026-11-11', dates: ['2026-11-11', '2026-11-12'],
-  });
-  h.save(key, { '2026-11-11': true, '2026-11-12': true });
-  const result = h.api.readAdherence();
-  assert.equal(result.due, 0);
-  assert.equal(result.completed, 0);
-});
-
-test('adherence rejects a foreign profile or cross-profile check-in key', () => {
-  const cases = [
-    ['runner-a', { profileId: 'runner-b', checkinKey: checkinKey('runner-b') }],
-    ['runner-a', { profileId: 'runner-a', checkinKey: checkinKey('runner-b') }],
-    ['default', { profileId: 'default', checkinKey: checkinKey('runner-b') }],
-  ];
-  for (const [profileId, fields] of cases) {
-    const h = harness();
-    h.api.setState({ profileId });
-    h.save(historyKey(profileId), { ...fields, startDate: '2026-11-01', dates: ['2026-11-05'] });
-    h.save(fields.checkinKey, { '2026-11-05': true });
-    assert.equal(h.api.readAdherence(), null);
-  }
-});
-
-test('unreadable history produces unknown adherence instead of fabricated zero completion', () => {
-  const h = harness();
-  h.localStorage.setItem(historyKey('default'), '{broken');
-  assert.equal(h.api.readAdherence(), null);
-});
-
-function assertNoGeneratedPlan(h) {
-  assert.match(h.element('weekList').innerHTML, /信息未通过检查/);
-  assert.doesNotMatch(h.element('weekList').innerHTML, /data-workout="true"/);
-  assert.equal(h.writes.some(key => key.endsWith(':started')), false, 'A failed render must not start a plan.');
-  assert.equal(h.writes.some(key => key.startsWith('xunxu-plan-evidence-v2:')), false, 'A failed render must not replace plan history.');
-}
-
 test('a valid target generates and stores a plan without performance evidence', () => {
   const h = harness();
   h.api.render();
@@ -349,37 +202,14 @@ test('weaker capability changes actual difficulty and personal pace advice witho
   assert.equal(h.element('equivalentTime').textContent, '2:10:00');
 });
 
-test('switching profiles reloads only their own records, personal data, history and check-in key', () => {
-  const h = harness();
-  const a = 'runner-a', b = 'runner-b';
-  const commonForm = { raceDate: '2027-02-01', halfGoalTime: '01:45:00', weeklyKm: '45', longRun: '18', days: '4' };
-  h.save('xunxu-profile-form-v1:' + a, { ...commonForm, restingHr: '50', maxHr: '190' });
-  h.save('xunxu-profile-form-v1:' + b, { ...commonForm, restingHr: '65', maxHr: '180' });
-  h.records.put(a, record({ id: 'result-a', profileId: a, elapsedSeconds: 6000 }));
-  h.records.put(b, record({ id: 'result-b', profileId: b, elapsedSeconds: 7800, date: '2026-10-15' }));
-  h.api.loadProfileForm(a); h.api.render();
-  const aTargets = targetBlocks(h), aAdvice = adviceBlocks(h), aHistory = assertGeneratedPlan(h, a);
-  assert.equal(h.element('equivalentTime').textContent, '1:40:00');
-  h.save(aHistory.checkinKey, { '2026-11-10': true });
-  const aKeys = [historyKey(a), aHistory.checkinKey, aHistory.checkinKey + ':started', h.records.key(a), 'xunxu-profile-form-v1:' + a];
-  const aStored = aKeys.map(key => h.localStorage.getItem(key));
-  h.api.loadProfileForm(b); h.api.render();
-  const bHistory = assertGeneratedPlan(h, b);
-  assert.notEqual(bHistory.checkinKey, aHistory.checkinKey);
-  assert.equal(h.element('equivalentTime').textContent, '2:10:00');
-  assert.equal(h.element('restingHr').value, '65');
-  assert.match(h.element('evidenceDetails').innerHTML, /2026-10-15/);
-  assert.doesNotMatch(h.element('evidenceDetails').innerHTML, /2026-11-01/);
-  assert.deepEqual(targetBlocks(h), aTargets);
-  assert.notDeepEqual(adviceBlocks(h), aAdvice);
-  assert.deepEqual(aKeys.map(key => h.localStorage.getItem(key)), aStored);
-  h.api.loadProfileForm(a); h.api.render();
-  assert.equal(h.element('equivalentTime').textContent, '1:40:00');
-  assert.equal(h.element('restingHr').value, '50');
-  assert.deepEqual(adviceBlocks(h), aAdvice);
-  assert.equal(assertGeneratedPlan(h, a).checkinKey, aHistory.checkinKey);
-  assert.equal(h.records.list(a).length, 1);
-  assert.equal(h.records.list(b).length, 1);
+test('switching cloud profiles loads only their own data and preserves identical target prescriptions',()=>{
+  const h=harness(),a='runner-a',b='runner-b',form={raceDate:'2027-02-01',halfGoalTime:'01:45:00',weeklyKm:'45',longRun:'18',days:'4'};
+  h.data(a).form={...form,restingHr:'50',maxHr:'190'};h.data(b).form={...form,restingHr:'65',maxHr:'180'};
+  h.data(a).records=[record({id:'a-result',profileId:a,elapsedSeconds:6000})];h.data(b).records=[record({id:'b-result',profileId:b,elapsedSeconds:7800,date:'2026-10-15'})];
+  h.api.loadProfileForm(a);h.api.render();const targets=targetBlocks(h),advice=adviceBlocks(h),historyA=assertGeneratedPlan(h,a),before=JSON.stringify(h.data(a));
+  h.api.loadProfileForm(b);h.api.render();assert.notEqual(assertGeneratedPlan(h,b).checkinKey,historyA.checkinKey);assert.equal(h.element('restingHr').value,'65');assert.equal(h.element('equivalentTime').textContent,'2:10:00');
+  assert.deepEqual(targetBlocks(h),targets);assert.notDeepEqual(adviceBlocks(h),advice);assert.equal(JSON.stringify(h.data(a)),before);
+  h.api.loadProfileForm(a);h.api.render();assert.equal(h.element('restingHr').value,'50');assert.equal(h.element('equivalentTime').textContent,'1:40:00');assert.deepEqual(adviceBlocks(h),advice);
 });
 
 test('145 fourth-week 10K tempo and three 2K repetitions survive weak capability rendering', () => {
@@ -433,7 +263,7 @@ test('the legacy full-marathon branch removes all training after a Monday race',
   const workoutDates = [...html.matchAll(/data-date="([^"]+)" data-workout="true"/g)].map(match => match[1]);
   assert.ok(workoutDates.length > 0);
   assert.ok(workoutDates.every(date => date <= '2027-02-01'));
-  assert.ok(h.read(historyKey('default')).dates.every(date => date <= '2027-02-01'));
+  assert.ok(h.history('default').dates.every(date => date <= '2027-02-01'));
 });
 
 test('full-marathon limits prevent a truncated wrong race date while half-marathon keeps its 24-week horizon', () => {
@@ -451,4 +281,8 @@ test('full-marathon limits prevent a truncated wrong race date while half-marath
   const halfRace = divBlocks(halfBoundary.element('weekList').innerHTML, tag => /class="day race(?: |")/.test(tag));
   assert.equal(halfRace.length, 1);
   assert.match(halfRace[0], /data-date="2027-04-27"/);
+});
+
+test('leaving a pending or unsaved record warns, while viewing an unchanged record does not',()=>{
+ const h=harness();assert.equal(h.api.hasUnsavedChanges(),false);h.api.setState({draft:{dirty:false,saving:false}});assert.equal(h.api.hasUnsavedChanges(),false);h.api.setState({draft:{dirty:true,saving:false}});assert.equal(h.api.hasUnsavedChanges(),true);h.api.setState({draft:{dirty:false,saving:true}});assert.equal(h.api.hasUnsavedChanges(),true);
 });
