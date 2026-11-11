@@ -1,11 +1,8 @@
-name: Publish cloud training entry
+name: Test and deploy public planner
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'pages-entry/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
@@ -16,7 +13,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run tests
+        run: npm test
+      - name: Build full public planner
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          EMAIL_LOGIN_ENABLED: ${{ vars.EMAIL_LOGIN_ENABLED }}
+        run: npm run build
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
   deploy:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,18 +53,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Verify cloud entry exists
-        run: test -s pages-entry/index.html
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: pages-entry
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
