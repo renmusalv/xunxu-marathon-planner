@@ -2,72 +2,68 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
+const os = require('node:os');
+const {execFileSync} = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
+const cloudEntry = 'https://xunxu-marathon-planner.smart-bean-0955.chatgpt.site/planner/index.html';
 
-test('built CSS and scripts resolve inside both root and project Pages deployments', () => {
-  const html = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8');
-  const assets = [...html.matchAll(/(?:src|href)="([^"#]+\.(?:css|js))"/g)].map(match => match[1]);
-  assert.equal(assets.length, 7);
-  for (const base of ['https://runner.example/', 'https://runner.github.io/planner/']) {
-    for (const resource of assets) {
-      assert.ok(resource.startsWith('./'), resource + ' must be project-relative');
-      const url = new URL(resource, base);
-      assert.ok(url.href.startsWith(base));
-      assert.ok(fs.existsSync(path.join(root, 'dist', resource)));
-    }
-  }
-  assert.ok(fs.existsSync(path.join(root, 'dist/.nojekyll')));
-});
-
-async function workerPaths(baseURI) {
-  let captured;
-  const engine = { async createWorker(langs, mode, options) {
-    captured = options;
-    return {
-      async setParameters() {},
-      async recognize() { return { data: { text: '距离 10 km\n总用时 00:49:30', confidence: 90 } }; },
-      async terminate() {},
-    };
-  } };
-  class ImageStub {
-    naturalWidth = 2; naturalHeight = 2;
-    set src(value) { if (value) queueMicrotask(() => this.onload?.()); }
-  }
-  class LocalURL extends URL {
-    static createObjectURL() { return 'blob:test-image'; }
-    static revokeObjectURL() {}
-  }
-  const canvas = () => ({
-    width: 2, height: 2,
-    getContext() { return { fillRect() {}, drawImage() {}, putImageData() {}, getImageData() { return { data: new Uint8ClampedArray(16).fill(255) }; } }; },
-    toBlob(callback) { callback(new Blob(['preview'])); },
-  });
-  const context = vm.createContext({
-    window: { Tesseract: engine },
-    document: { baseURI, createElement(tag) { assert.equal(tag, 'canvas'); return canvas(); } },
-    URL: LocalURL, Image: ImageStub, DOMException, Uint8Array, Uint8ClampedArray,
-    setTimeout, clearTimeout,
-  });
-  vm.runInContext(fs.readFileSync(path.join(root, 'src/ocr.js'), 'utf8'), context);
-  const file = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 0])], { type: 'image/png' });
-  const parsed = await context.window.RaceOCR.recognize(file);
-  assert.equal(parsed.fields.distanceKm, 10);
-  return captured;
+function listFiles(directory, prefix = '') {
+  return fs.readdirSync(directory, {withFileTypes: true}).flatMap(entry => {
+    const relative = path.posix.join(prefix, entry.name);
+    return entry.isDirectory()
+      ? listFiles(path.join(directory, entry.name), relative)
+      : [relative];
+  }).sort();
 }
 
-test('actual OCR recognition supplies same-origin absolute worker assets under a Pages project path', async () => {
-  const options = await workerPaths('https://runner.github.io/planner/index.html');
-  assert.equal(options.workerPath, 'https://runner.github.io/planner/vendor/ocr/worker.min.js');
-  assert.equal(options.corePath, 'https://runner.github.io/planner/vendor/ocr/core');
-  assert.equal(options.langPath, 'https://runner.github.io/planner/vendor/ocr/lang');
-  assert.equal(options.workerBlobURL, false);
+test('a fresh Pages build removes legacy scripts, OCR assets and source archives from the artifact', () => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xunxu-pages-entry-'));
+  try {
+    fs.mkdirSync(path.join(temporaryRoot, 'scripts'), {recursive: true});
+    fs.copyFileSync(path.join(root, 'scripts/build-static.cjs'), path.join(temporaryRoot, 'scripts/build-static.cjs'));
+    fs.cpSync(path.join(root, 'pages-entry'), path.join(temporaryRoot, 'pages-entry'), {recursive: true});
+    fs.mkdirSync(path.join(temporaryRoot, 'src'), {recursive: true});
+    fs.writeFileSync(path.join(temporaryRoot, 'index.html'), '<script src="app.js"></script>');
+    fs.writeFileSync(path.join(temporaryRoot, 'src/app.js'), 'legacy business application');
+    fs.mkdirSync(path.join(temporaryRoot, 'dist/vendor/ocr'), {recursive: true});
+    fs.writeFileSync(path.join(temporaryRoot, 'dist/app.js'), 'stale local-storage application');
+    fs.writeFileSync(path.join(temporaryRoot, 'dist/vendor/ocr/worker.min.js'), 'stale OCR worker');
+    fs.writeFileSync(path.join(temporaryRoot, 'dist/cloud-source.zip'), 'source backup must not be published here');
+
+    execFileSync(process.execPath, [path.join(temporaryRoot, 'scripts/build-static.cjs')], {cwd: os.tmpdir()});
+
+    assert.deepEqual(listFiles(path.join(temporaryRoot, 'dist')), ['.nojekyll', 'index.html']);
+    assert.deepEqual(
+      fs.readFileSync(path.join(temporaryRoot, 'dist/index.html')),
+      fs.readFileSync(path.join(root, 'pages-entry/index.html')),
+    );
+    assert.equal(fs.readFileSync(path.join(temporaryRoot, 'dist/.nojekyll'), 'utf8'), '');
+  } finally {
+    fs.rmSync(temporaryRoot, {recursive: true, force: true});
+  }
 });
 
-test('OCR assets also work when the same static bundle is served at a root domain', async () => {
-  const options = await workerPaths('https://runner.example/');
-  assert.equal(options.workerPath, 'https://runner.example/vendor/ocr/worker.min.js');
-  assert.equal(options.corePath, 'https://runner.example/vendor/ocr/core');
-  assert.equal(options.langPath, 'https://runner.example/vendor/ocr/lang');
+test('the entry uses one ordinary cloud link without a local app, embedded login, storage or API client', () => {
+  const html = fs.readFileSync(path.join(root, 'pages-entry/index.html'), 'utf8');
+  const links = [...html.matchAll(/\bhref\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
+  assert.deepEqual(links, [cloudEntry]);
+  assert.match(html, /<a\b[^>]*href=/i);
+  assert.match(html, /name="viewport"\s+content="width=device-width, initial-scale=1"/);
+  assert.match(html, /已获授权的账号/);
+  assert.match(html, /不在本机读取或保存训练资料/);
+  assert.doesNotMatch(html, /<(?:script|iframe|frame|object|embed|form)\b/i);
+  assert.doesNotMatch(html, /\bon\w+\s*=/i);
+  assert.doesNotMatch(html, /localStorage|sessionStorage|indexedDB|serviceWorker|XMLHttpRequest|\bfetch\s*\(|postMessage\s*\(/);
+  assert.doesNotMatch(html, /http-equiv\s*=\s*["']refresh/i);
+  assert.doesNotMatch(html, /\b(?:src|action)\s*=\s*["']https?:/i);
+});
+
+test('the Pages workflow publishes only the entry directory without executing a business-app build', () => {
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  assert.match(workflow, /uses: actions\/upload-pages-artifact@v4\s+with:\s+path: pages-entry(?:\r?\n|$)/);
+  assert.match(workflow, /uses: actions\/deploy-pages@v4/);
+  assert.match(workflow, /run: test -s pages-entry\/index\.html/);
+  assert.doesNotMatch(workflow, /\b(?:npm|pnpm|yarn|vinext|wrangler)\b/);
+  assert.doesNotMatch(workflow, /path:\s*["']?(?:\.|dist|cloud(?:-source\.zip)?)["']?\s*$/m);
 });
