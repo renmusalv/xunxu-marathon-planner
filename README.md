@@ -1,75 +1,56 @@
-# 循序 · 马拉松训练计划
+# 循序 · 云端训练计划
 
-按目标时间生成半马课表，结合真实成绩显示个人建议配速、心率参考与完成难度。支持手机页面、跑步截图识别和独立训练档案。
+按目标查看训练课表，结合真实成绩与个人资料，参考完成难度、配速和心率建议。训练档案、成绩图片与打卡记录由云端应用保存。
 
-这是可以独立部署的静态网站，无需服务器、数据库或 API 密钥。OCR 在访问者的浏览器中运行，相关组件和中英文模型随站点提供。
+- [进入云端训练空间](https://xunxu-marathon-planner.smart-bean-0955.chatgpt.site/planner/index.html)
+- [GitHub Pages 入口](https://renmusalv.github.io/xunxu-marathon-planner/)
 
-## 发布到 GitHub Pages
+云端训练空间保持原有访问范围，只向已获授权的账号开放。首次进入或登录状态失效时，按页面提示完成登录；公开的 GitHub 仓库和入口页面不会授予训练空间访问权限。
 
-仓库已经包含 `.github/workflows/deploy.yml`。在仓库的 **Settings → Pages → Build and deployment → Source** 中选择 **GitHub Actions**。推送到 `main` 后，工作流会安装锁文件中的依赖、生成 OCR 运行资源、构建 `dist/` 并执行测试，通过后再发布。也可在 Actions 页面手动运行 **Test and deploy GitHub Pages**。
+## 仓库与运行方式
 
-发布成功后，Pages 设置页和工作流的部署结果会提供实际访问地址。默认的项目网站地址形如 `https://你的账号.github.io/仓库名/`，访客无需登录 GitHub 即可使用。
+| 内容 | 作用 |
+| --- | --- |
+| `pages-entry/index.html` | 当前 GitHub Pages 页面；仅提供云端入口，不在本机读取或保存训练资料 |
+| `.github/workflows/deploy.yml` | 使用 GitHub 官方 Actions，仅将 `pages-entry/` 发布到 Pages |
+| `scripts/build-static.cjs` | 本地构建入口页；先清空 `dist/`，再复制入口并生成 `.nojekyll` |
+| `cloud-source.zip` | 新版云端应用的完整源码快照，供下载、审阅、恢复与重新构建 |
+| `cloud-source.zip.sha256` | 对应源码压缩包的 SHA-256 校验值 |
+| 根目录 `index.html`、`src/`、既有算法及存储测试 | 上一静态版本的参考代码，保留在 Git 历史与当前仓库中，不属于现在发布的 Pages 应用 |
 
-工作流仅使用 GitHub 官方 Actions；发布使用 GitHub 自动提供的短期授权，不需要创建或保存个人访问令牌。仓库保存源码、测试、构建脚本与 `package-lock.json`，不提交 `node_modules/` 或生成的 `dist/`。GitHub Actions 使用 Node.js 24，通过公开 npm registry 安装锁定版本及完整性校验的依赖，将浏览器 OCR 引擎、内嵌 WebAssembly 内核、中英文模型与许可说明复制到发布目录，再部署完整站点。访客识别截图时使用站点自带资源，不需要访问 npm registry。
+新版云端源码快照使用 Vinext、D1 与 R2，并依赖部署平台提供的可信身份。压缩包包含依赖锁文件、应用和后端源码、数据库迁移、构建脚本及配置说明；不包含运行中的数据库、用户上传、会话、密钥或访问令牌。复现应用代码与构建产物，需要根据快照内说明配置相应服务及可信身份入口。
 
-脚本、样式和 OCR worker / core / language 的地址均支持项目子路径，也支持根域名与自定义域名。不要直接将仓库根目录作为发布源；实际可部署的网站目录为 `dist/`。
+`cloud-source.zip` 是版本化的完整源码备份，不是能在 GitHub 页面中逐文件在线编辑的全栈工作目录。下载后解压到独立目录，使用其中的依赖文件和操作说明。完整文件集以压缩包为准。
 
-官方说明：[配置发布来源](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) · [自定义 Pages 工作流](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
+当前云端快照源码提交：`bb0ff7440a67ceaf655127e54675e9ccc38c68ec`。构建及 118 项测试通过；数据库迁移随源码保存。完整性校验值见 `cloud-source.zip.sha256`。
 
-## 开发与构建
+## GitHub Pages 发布
 
-首次运行或从空目录构建时，按以下顺序执行（与 GitHub Actions 相同）：
+Pages 只发布轻量入口，训练业务由云端站点运行。仓库的 **Settings → Pages → Source** 保持 **GitHub Actions**。修改 `pages-entry/` 或部署工作流并提交到 `main`，即可发布入口；也可手动运行 **Publish cloud training entry**。
+
+工作流不安装 OCR 依赖、不运行根目录的旧应用构建，也不运行云端应用。公开仓库中的源码压缩包和其他代码不会进入 Pages 发布产物。
+
+本地检查入口：
 
 ```sh
-npm ci --no-audit --no-fund
-npm run vendor:ocr
 npm run build
 npm test
+python3 -m http.server 8000 --directory dist
 ```
 
-- `npm ci`：根据 `package-lock.json` 安装固定版本 OCR 依赖，需要联网访问公开 npm registry。直接依赖为 `tesseract.js@7.0.0`、`@tesseract.js-data/eng@1.0.0` 和 `@tesseract.js-data/chi_sim@1.0.0`；内核与传递依赖同样由锁文件固定。
-- `npm run vendor:ocr`：从已安装依赖生成 `dist/vendor/ocr/`，包含 Tesseract 7、中英文模型及许可说明。资源只进入发布产物，不进入源码仓库。
-- `npm run build`：把 `index.html` 与 `src/` 下应用模块复制到 `dist/`，保留 OCR 资产。
-- `npm test`：执行识别解析、评估、档案存储及主流程回归测试。
-- `dist/.nojekyll`：构建时自动生成，静态文件无需 Jekyll 处理。
-- 本地预览：完成上述构建后，使用任意静态服务器提供 `dist/`。例如安装了 Python 时，可运行 `python3 -m http.server 8000 --directory dist` 并打开 `http://localhost:8000/`。后续只修改应用源码时，可直接执行 `npm run build` 与 `npm test`；删除 `dist/` 后需重新执行 `npm run vendor:ocr`。
+根目录的 `npm run build` 只生成入口页。`npm test` 包含当前入口发布边界检查，以及保留的旧版算法、解析与隔离回归；新版云端业务以源码快照中的测试和构建流程为准。
 
-## 文件职责
+本地预览地址为 `http://localhost:8000/`。进入训练空间的按钮会打开受授权保护的云端站点。
 
-- `src/app.js`：表单、截图核对窗口、训练生成、打卡和个人资料联动。
-- `src/assessment.js`：纯函数评估，包含公式、透明经验规则及原始研究/官方来源。
-- `src/target-plan.js`：仅接受目标时间与日期的七周半马模板；1:45 对齐用户参考图，其余目标统一平移配速。
-- `src/session-advice.js`：只读目标课表，根据当前能力另列难度、配速与心率建议，不改写主课表。
-- `src/ocr.js`：本地中英文图片识别、图像处理、可取消任务和字段提取。
-- `src/profile-store.js`：显式档案归属、重复成绩检查与截图存储。
-- `src/enhancements.css`：延续原有绿色视觉风格的资料页、核对窗口与能力卡。
+## 版本与数据
 
-## 数据与隔离
+上一静态版本的完整提交为 [`02eb9eff599cf309f9cbe9fff517d783df095309`](https://github.com/renmusalv/xunxu-marathon-planner/tree/02eb9eff599cf309f9cbe9fff517d783df095309)，可查看或下载当时源码。
 
-本版本延续既有的浏览器本机档案模型，不提供跨设备同步或独立用户账号。成绩使用 `xunxu-records-v2:{profileId}`，图片以 IndexedDB 的 `{profileId}:{recordId}` 为键；读写再次核验归属。个人资料使用原有档案表单键。新版半马目标课表打卡使用目标时间、比赛日期与档案归属构成的独立键，改变个人成绩、心率、跑量或频率不再重置打卡。既有成绩、截图、个人资料与旧打卡存储不删除；旧版能力课表的打卡不冒充为新版目标课表的完成记录。
+旧版按浏览器保存的资料与云端资料属于不同存储。入口页不会读取、上传或删除旧设备中的本机资料，也不会承诺这些资料已经完成迁移。当前版本不提供自动迁移；仅打开入口页不代表旧资料已同步。
 
-上传任务捕获开始时的档案 ID；取消或切换档案后不会写入其他档案。识别结果必须由用户核对后保存。新增截图已保存但成绩保存失败时会回滚新增图片，不将存储失败显示为成功。清除站点数据会移除本机记录。
+云端的访问范围、身份校验、档案归属和图片权限由服务器执行。目标适配度与训练建议继续作为训练参考，不是个体达标概率或医疗诊断。
 
-发布到新域名后，浏览器会将它视为新的站点：旧网址下保存的成绩、截图和打卡不会自动迁移到 GitHub Pages。仓库只包含程序、测试与公开的 OCR 组件，没有导出任何访问者的个人资料。公开源码不等于共享访问者的本机档案；同一浏览器中的档案区分也不等于独立账号权限系统。
+## 官方文档
 
-## 评估边界
-
-- 仅将近 365 天、已确认、完整计时的公路比赛/全力测试纳入能力估算；普通训练、移动时间、越野、明显爬升及跑步机成绩仅留档。
-- 10 km 转半马使用 Riegel 指数 1.07；全马仍要求全马实绩。
-- 多条实绩按时间、距离和比赛类型加权。情景范围与配速带含明确的经验规则，不是个人统计置信区间。
-- 目标适配度是准备度规则评分，不是达标概率或伤病风险。成绩证据充分程度独立显示；半年以前的记录不生成当前适配度分数。
-- 实测最大心率与静息心率用于 HRR；可靠跑步阈值心率或最大心率可提供其他明确方法。缺少或矛盾的心率资料使用体感，截图中的平均/最高心率不会自动成为个人最大心率。
-- VO₂max 保留来源与日期并作补充说明，不直接增加达标分数。
-- 疼痛或疾病恢复时暂缓评分及执行建议；半马目标课表保留为参考。计划不是医疗诊断或经过个体校准的成功率预测。
-
-## 目标模板与能力旁注
-
-- 1:45 基准保留图中四跑、一力量、两休息的结构；第 4 周连续 10K 节奏跑，第 2、5 周为 2K×3 且组间两次 1K 恢复。时长课仍按分钟展示，周公里数仅作区间估算。
-- 其他目标按 `(目标秒数 − 6300) / 21.0975` 秒/km 平移全部训练配速，距离、组数和七周节奏保持一致。它是模板换算，不是个体最优处方。
-- 图示比赛均速 4:58/km 是近似值。严格 1:45:00 的均速为 4:58.6/km，比赛字段按整秒显示 4:59；其余图中基准配速不整体改变。
-- 原图第 5 周周一与第 7 周周四未写数字配速，页面明确标注“沿用有氧参考”。未规定的热身和放松不计入周公里数。
-- 比赛日期确定每个七天周期；非周日比赛整体平移，保留赛前一天休息。不足七周只显示相应剩余模板周；超过七周增加明确标注“非原图”的衔接期。
-- 实际完成难度由当前配速差、长跑基础、周负荷与跑步频率等给出解释性分级；阈值属于产品规划规则，不是成功概率。无近期成绩时仍显示目标课表，能力建议保持待补充。
-- 手机宽度下训练卡纵向排列，目标要求与能力建议分区，长段说明可展开查看。
-
-验证用截图只包含人工测试数据，未作为用户资料或默认数据发布。
+- [GitHub Pages 自定义发布工作流](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
+- [通过网页上传仓库文件](https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository)
