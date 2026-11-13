@@ -236,3 +236,10 @@ test('evaluation is deterministic and does not mutate or retain another profile'
   assert.deepEqual(a, again);
   assert.equal(JSON.stringify(first), snapshot);
 });
+
+
+test('unknown imported VO2 measurement method is explicit and never changes the fit score',()=>{
+ const baseline=evaluate(), imported=evaluate({personal:{recentConsistency:'stable',vo2max:48,vo2maxSource:'unknown',vo2maxDate:'2026-11-01'}});
+ assert.equal(imported.vo2.source,'unknown');assert.equal(imported.vo2.label,'测量方式待确认');
+ assert.equal(imported.fit.score,baseline.fit.score);assert.equal(imported.methodology.vo2AffectsScore,false);
+});

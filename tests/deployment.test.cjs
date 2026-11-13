@@ -26,6 +26,7 @@ function temporaryProject() {
   fs.copyFileSync(path.join(root, 'package.json'), path.join(temporaryRoot, 'package.json'));
   fs.copyFileSync(path.join(root, 'index.html'), path.join(temporaryRoot, 'index.html'));
   fs.cpSync(path.join(root, 'src'), path.join(temporaryRoot, 'src'), {recursive: true});
+  fs.cpSync(path.join(root, 'assets'), path.join(temporaryRoot, 'assets'), {recursive: true});
   fs.writeFileSync(path.join(temporaryRoot, 'src/cloud-config.js'), emptyConfig);
   fs.symlinkSync(path.join(root, 'node_modules'), path.join(temporaryRoot, 'node_modules'), 'dir');
   return temporaryRoot;
@@ -46,6 +47,7 @@ test('full static build includes local SDK/OCR assets and excludes old landing p
     fs.writeFileSync(path.join(temporaryRoot, 'dist/server/worker.js'), 'stale private server bundle');
     fs.writeFileSync(path.join(temporaryRoot, 'dist/obsolete.js'), 'stale asset');
     fs.writeFileSync(path.join(temporaryRoot, 'cloud-source.zip'), 'legacy source archive');
+    fs.writeFileSync(path.join(temporaryRoot, 'assets/export.xml'), 'private health export must not publish');
     fs.mkdirSync(path.join(temporaryRoot, '.openai'));
     fs.writeFileSync(path.join(temporaryRoot, '.openai/hosting.json'), '{"testOnly":"must not ship"}');
 
@@ -53,6 +55,8 @@ test('full static build includes local SDK/OCR assets and excludes old landing p
     const files = listFiles(built.output);
     assert.ok(files.includes('index.html') && files.includes('app.js') && files.includes('.nojekyll'));
     assert.ok(files.includes('cloud-config.js') && files.includes('supabase-cloud.js'));
+    assert.ok(files.includes('assets/half-marathon-hero.jpg'));
+    assert.deepEqual(files.filter(file=>file.startsWith('assets/')),['assets/half-marathon-hero.jpg']);
     assert.ok(files.includes('vendor/supabase/supabase.js') && files.includes('vendor/supabase/LICENSE'));
     assert.ok(files.includes('vendor/ocr/tesseract.min.js') && files.includes('vendor/ocr/worker.min.js'));
     assert.equal(files.filter(file => /^vendor\/ocr\/core\/.+\.wasm\.js$/.test(file)).length, 6);
@@ -72,7 +76,7 @@ test('full static build includes local SDK/OCR assets and excludes old landing p
     assert.match(html, /id="weekList"/);
     assert.match(html, /src="\.\/vendor\/supabase\/supabase\.js"/);
     assert.doesNotMatch(html, /signin-with-chatgpt|signout-with-chatgpt|<iframe\b/i);
-    const assets = [...html.matchAll(/(?:src|href)="([^"#]+\.(?:css|js))"/g)].map(match => match[1]);
+    const assets = [...html.matchAll(/(?:src|href)="([^"#]+\.(?:css|js|jpg))"/g)].map(match => match[1]);
     for (const base of ['https://runner.example/', 'https://renmusalv.github.io/xunxu-marathon-planner/']) {
       for (const resource of assets) {
         assert.ok(resource.startsWith('./'));
