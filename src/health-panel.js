@@ -133,11 +133,11 @@
         const fields = Array.from(dialog.querySelectorAll('[data-health-field]:checked')).map(input=>input.dataset.healthField);
         const runDays = $('healthRunDays').value;
         const patch = buildFormPatch(report,{fields,completeCoverage:$('healthCoverage').checked,runDays});
-        patch.healthImport = {appliedAt:new Date().toISOString(),analyzedOn:report.analyzedOn || report.window?.end || '',fields:[...fields,...(runDays ? ['days'] : [])]};
+        const marker = {appliedAt:new Date().toISOString(),analyzedOn:report.analyzedOn || report.window?.end || '',fields:[...fields,...(runDays ? ['days'] : [])]};
         busy = true; $('healthApplyButton').disabled = true; $('healthApplyButton').textContent = '正在应用…'; $('healthChooseFile').disabled = true;
-        await onApply(patch,context);
+        await onApply(patch,context,marker);
         if (!live()) return;
-        reports.set(context.key,{report:appliedReport,applied:true,marker:patch.healthImport});
+        reports.set(context.key,{report:appliedReport,applied:true,marker});
         close(); onStatus?.(); onApplied?.(context);
       } catch (cause) {
         if (live()) error(cause.message || '未能应用健康数据，请重试。');
@@ -165,8 +165,8 @@
       reset({clearReports=false}={}) {close();if(clearReports)reports.clear();},
       status(key, marker) {
         const entry=reports.get(key),saved=entry?.applied?entry.marker:marker;
-        if(saved?.appliedAt){const date=saved.analyzedOn||saved.appliedAt.slice(0,10);return `已导入健康数据 · ${date} · 评估需另核对近期成绩`}
-        return entry?'健康文件已读取 · 等待核对应用':'尚未导入 · 选择健康文件并应用后会标记';
+        if(saved?.appliedAt){const date=saved.analyzedOn||saved.appliedAt.slice(0,10);return `已导入健康数据 · ${date} · 已应用 · 评估需另核对近期成绩`}
+        return entry?'健康文件已读取 · 等待核对应用':'尚未导入 · 导入 Apple 健康文件并应用后会标记';
       },
       destroy() {close();destroyed=true;reports.clear();listeners.forEach(remove=>remove());}
     };

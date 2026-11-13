@@ -275,13 +275,13 @@ function updateGoalOverview(){
   const distance=Number($('distance').value),target=distance<30?parseTimeInput($('halfGoalTime').value):Number($('paceMin').value)*60*distance+Number($('paceSec').value)*distance;
   goalOverview.update({assessment:lastAssessment,raceDate:$('raceDate').value,targetSeconds:target,distanceKm:distance,profileName:profiles.find(item=>item.id===activeProfileId)?.name||'当前档案',failed:$('generationStatus').textContent.startsWith('计划未更新'),loading:!cloudReady});
 }
-async function applyHealthPatch(patch,context){
+async function applyHealthPatch(patch,context,healthImport){
   if(!cloudReady||profileSwitching||context.key!==healthContext().key)throw new Error('当前档案已变化，请在目标档案中重新导入。');
   const owner=activeProfileId,epoch=accountEpoch,client=cloud;
-  const allowed=['weeklyKm','longRun','days','restingHr','vo2max','vo2maxSource','vo2maxDate','healthImport'];
+  const allowed=['weeklyKm','longRun','days','restingHr','vo2max','vo2maxSource','vo2maxDate'];
   if(Object.keys(patch).some(key=>!allowed.includes(key)))throw new Error('健康摘要含有不支持的字段。');
   clearTimeout(formUpdateTimer);saveProfileForm();clearTimeout(cloudSaveTimer);
-  await client.commit(owner,data=>{data.form={...data.form,...patch};return data});
+  await client.commit(owner,data=>{data.form={...data.form,...patch,healthImport};return data});
   if(epoch!==accountEpoch||owner!==activeProfileId||client!==cloud)return;
   const saved=client.getData(owner).form;
   Object.keys(patch).filter(key=>$(key)).forEach(key=>{$(key).value=saved[key]??''});

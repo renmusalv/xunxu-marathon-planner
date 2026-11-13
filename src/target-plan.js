@@ -311,7 +311,9 @@
     const bridgeCount = Math.max(0, Math.ceil((coreStart - fromAnchor) / (7 * DAY)));
     const firstCoreIndex = Math.max(0, Math.floor((fromAnchor - coreStart) / (7 * DAY)));
     const calendarStart = bridgeCount ? coreStart - bridgeCount * 7 * DAY : coreStart + firstCoreIndex * 7 * DAY;
-    if (bridgeCount + 7 - firstCoreIndex > MAX_WEEKS) return invalid('按周一至周日排布后将超过 24 周，请选择更近的比赛日期。');
+    // The 24-week limit is measured from the requested start date above.
+    // Monday alignment can add a partial calendar row before that date, so
+    // the displayed row count may be 25 while the actual plan stays in range.
     const weeks = [];
     for (let bridgeIndex = 0; bridgeIndex < bridgeCount; bridgeIndex += 1) weeks.push(bridgeWeek(bridgeIndex, bridgeCount, target));
     for (let templateIndex = firstCoreIndex; templateIndex < 7; templateIndex += 1) weeks.push(mondayWeeks && templateIndex === 6 ? mondayRaceWeek(target, raceWeekday) : weekTemplate(templateIndex, target));
