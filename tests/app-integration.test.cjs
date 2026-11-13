@@ -36,7 +36,7 @@ function harness(){
  const source=fs.readFileSync(path.join(__dirname,'../src/app.js'),'utf8'),marker='// Boot and explicit UI events.';assert.ok(source.includes(marker));
  vm.runInContext(source.slice(0,source.indexOf(marker))+`
  cloudReady=true;
- globalThis.__appTest={render,savePlanHistory,readAdherence,validatePersonal,saveProfileForm,loadProfileForm,updateCloudStatus,hasUnsavedChanges,
+ globalThis.__appTest={render,savePlanHistory,readAdherence,validatePersonal,saveProfileForm,loadProfileForm,updateCloudStatus,hasUnsavedChanges,personalValues,revealProfileField,applyRecognizedFields,updateRecordHeartSummary,recognitionTimingMessage,
  setState(state){if('profileId'in state)activeProfileId=state.profileId;if('checkinKey'in state)activeCheckinKey=state.checkinKey;if('startDate'in state)activePlanStartDate=state.startDate;if('records'in state)currentRecords=state.records;if('draft'in state)recordDraft=state.draft;}};
  `,context,{filename:'src/app.js'});
  element('raceDate').value=defaults.raceDate;
@@ -285,4 +285,95 @@ test('full-marathon limits prevent a truncated wrong race date while half-marath
 
 test('leaving a pending or unsaved record warns, while viewing an unchanged record does not',()=>{
  const h=harness();assert.equal(h.api.hasUnsavedChanges(),false);h.api.setState({draft:{dirty:false,saving:false}});assert.equal(h.api.hasUnsavedChanges(),false);h.api.setState({draft:{dirty:true,saving:false}});assert.equal(h.api.hasUnsavedChanges(),true);h.api.setState({draft:{dirty:false,saving:true}});assert.equal(h.api.hasUnsavedChanges(),true);
+});
+
+
+test('simplifying the form preserves retired personal fields and legacy results in their own profile',()=>{
+  const h=harness();
+  h.data('old').form={age:'37',experienceMonths:'81',benchmarkDistance:'10',benchmarkTime:'00:49:30',benchmarkDate:'2026-10-10',restingHr:'52',weeklyKm:'42',longRun:'18',days:'4'};
+  h.api.loadProfileForm('old');assert.equal(h.element('legacyEntry').hidden,false);
+  assert.equal(h.element('weeklyKm').value,'42');assert.equal(h.element('heartDetails').open,false);
+  h.element('weeklyKm').value='44';h.api.saveProfileForm();
+  assert.equal(h.data('old').form.age,'37');assert.equal(h.data('old').form.experienceMonths,'81');
+  assert.equal(h.data('old').form.benchmarkTime,'00:49:30');assert.equal(h.data('old').form.restingHr,'52');
+  assert.equal(h.api.personalValues().age,undefined);assert.equal(h.api.personalValues().experienceMonths,undefined);
+  h.api.render();assert.doesNotMatch(h.element('physiologyDetails').innerHTML,/年龄|持续跑龄/);
+  assert.notEqual(h.element('equivalentTime').textContent,'待确认');
+  h.api.loadProfileForm('new');assert.equal(h.element('legacyEntry').hidden,true);assert.equal(h.element('benchmarkTime').value,'');
+  h.api.saveProfileForm();assert.equal(h.data('new').form.age,undefined);assert.equal(h.data('old').form.weeklyKm,'44');
+});
+
+test('blank training basis preserves the target plan but never treats samples as user evidence',()=>{
+  const h=harness();h.api.setState({records:[record()]});
+  for(const id of ['weeklyKm','longRun','days'])h.element(id).value='';
+  h.api.render();assertGeneratedPlan(h);const before=targetBlocks(h);
+  assert.equal(h.element('fitScore').textContent,'—');assert.equal(h.element('planDifficultyLabel').dataset.level,'unknown');
+  assert.match(h.element('dataGaps').innerHTML,/平均周跑量|最长跑|跑步天数/);
+  for(const[id,value]of Object.entries({weeklyKm:'42',longRun:'18',days:'4',recentConsistency:'stable',discomfort:'none'}))h.element(id).value=value;
+  h.api.render();assert.notEqual(h.element('fitScore').textContent,'—');assert.deepEqual(targetBlocks(h),before);
+});
+
+test('optional personal sections preserve values and reveal the right section for a correction',()=>{
+  const h=harness();h.data('runner').form={maxHr:'187',restingHr:'51',vo2max:'49',vo2maxSource:'watch',vo2maxDate:'2026-11-01'};
+  h.api.loadProfileForm('runner');assert.equal(h.element('heartDetails').open,false);assert.equal(h.element('vo2Details').open,false);
+  assert.equal(h.element('heartDetailsCount').textContent,'已填 2 项');assert.equal(h.element('vo2DetailsCount').textContent,'已填写');
+  h.api.revealProfileField('thresholdHr');assert.equal(h.element('panel-personal').hidden,false);assert.equal(h.element('heartDetails').open,true);
+  h.api.revealProfileField('vo2maxDate');assert.equal(h.element('vo2Details').open,true);
+  h.api.saveProfileForm();assert.equal(h.data('runner').form.maxHr,'187');assert.equal(h.data('runner').form.vo2max,'49');
+});
+
+test('recognized average and peak heart rate fill the review without changing personal maximum',()=>{
+  const h=harness();h.element('maxHr').value='190';h.element('restingHr').value='53';
+  const fields=h.api.applyRecognizedFields({distanceKm:10,elapsedSeconds:3000,date:'2026-11-01',averageHr:154,peakHr:179,paceSeconds:300});
+  assert.equal(h.element('recordAverageHr').value,154);assert.equal(h.element('recordPeakHr').value,179);
+  assert.equal(h.element('recordTime').value,'00:50:00');assert.equal(h.element('recordDistance').value,'10');
+  assert.equal(h.element('recordHeartDetails').open,true);assert.match(h.element('recordHeartSummary').textContent,/平均 154.*最高 179/);
+  assert.match(h.element('recognitionFields').textContent,/平均心率、本次最高心率/);assert.equal(fields.length,5);
+  assert.equal(h.element('maxHr').value,'190');assert.equal(h.element('restingHr').value,'53');
+  h.element('recordPeakHr').value='181';h.api.updateRecordHeartSummary();assert.match(h.element('recordHeartSummary').textContent,/最高 181/);
+});
+
+test('1:50 UI describes its own reference and interpolated targets describe the inference',()=>{
+  const h=harness();h.element('halfGoalTime').value='01:50:00';h.api.render();assertGeneratedPlan(h);
+  assert.match(h.element('templateTitle').textContent,/1:50:00.*参考图/);assert.match(h.element('templateCopy').textContent,/1:50/);
+  assert.match(targetBlocks(h).join(' '),/6:10–6:40\/km/);assert.match(targetBlocks(h).join(' '),/5:05–5:10\/km/);
+  h.element('halfGoalTime').value='01:47:30';h.api.render();assert.match(h.element('templateTitle').textContent,/逐课插值/);assert.match(h.element('templateCopy').textContent,/插值/);
+});
+
+test('new page does not prefill training history or require unused demographic fields',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+  for(const id of ['weeklyKm','longRun']){const tag=html.match(new RegExp('<input[^>]*id="'+id+'"[^>]*>'))?.[0];assert.ok(tag);assert.doesNotMatch(tag,/\bvalue=/);}
+  assert.match(html,/<select id="days"><option value="" selected>/);
+  assert.doesNotMatch(html,/<input[^>]*id="(?:age|experienceMonths)"/);
+  assert.match(html,/<details class="personal-details" id="heartDetails">/);assert.match(html,/<details class="personal-details" id="vo2Details">/);
+});
+
+test('full-marathon planning cannot silently assume a running frequency after empty defaults',()=>{
+  const h=harness();h.element('distance').value='42.195';h.element('days').value='';h.api.render();
+  assertNoGeneratedPlan(h);assert.match(h.element('notice').textContent,/选择每周 3、4 或 5 天/);
+});
+
+
+test('explicit elapsed metadata prefills timing while leaving effort and course for the user',()=>{
+  const h=harness();h.element('recordEffort').value='';h.element('recordCourse').value='unknown';
+  const filled=h.api.applyRecognizedFields({elapsedSeconds:3000},'elapsed');
+  assert.equal(h.element('recordDurationType').value,'elapsed');assert.ok(filled.includes('计时类型'));
+  assert.match(h.element('recognitionFields').textContent,/计时类型/);
+  assert.match(h.api.recognitionTimingMessage(h.element('recordDurationType').value),/已识别为完整计时.*请核对.*比赛 \/ 测试 \/ 日常训练/);
+  assert.equal(h.element('recordEffort').value,'');assert.equal(h.element('recordCourse').value,'unknown');
+});
+
+test('moving-time metadata prefills its actual type and explicitly stays archive-only',()=>{
+  const h=harness();h.api.applyRecognizedFields({elapsedSeconds:2910},'moving');
+  assert.equal(h.element('recordDurationType').value,'moving');assert.equal(h.element('recordTime').value,'00:48:30');
+  assert.match(h.api.recognitionTimingMessage(h.element('recordDurationType').value),/移动时间，仅留档，不用于推算比赛能力/);
+});
+
+test('absent or unsupported timing metadata resets to unknown and asks for confirmation',()=>{
+  for(const value of [undefined,null,'unknown','','elapsed_time',{},true]){
+    const h=harness();h.element('recordDurationType').value='elapsed';
+    const filled=h.api.applyRecognizedFields({elapsedSeconds:3000},value);
+    assert.equal(h.element('recordDurationType').value,'unknown');assert.equal(filled.includes('计时类型'),false);
+    assert.match(h.api.recognitionTimingMessage(h.element('recordDurationType').value),/请确认这是完整计时还是移动时间/);
+  }
 });

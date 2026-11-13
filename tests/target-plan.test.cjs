@@ -101,12 +101,83 @@ test('race day keeps 105 minutes exactly and distinguishes 4:59 rounded race pac
   assert.equal(result.weeks[6].sessions[2].segments[0].pace[0], 298);
 });
 
-test('a different goal shifts every training pace uniformly while leaving workouts intact', () => {
-  const reference = plan();
-  const slower = plan({ targetSeconds: 7200 });
-  const faster = plan({ targetSeconds: 5700 });
-  for (const mapped of [slower, faster]) {
-    const expectedDelta = (mapped.targetSeconds - 6300) / 21.0975;
+test('the 1:50 image is a second exact anchor, with easy and quality paces calibrated separately', () => {
+  const result = plan({ targetSeconds: 6600 });
+  assert.equal(result.calibration.mode, 'reference');
+  assert.equal(result.calibration.exactAnchorTarget, 6600);
+  assert.match(result.calibration.label, /1:50/);
+  assert.deepEqual(result.weeks.map(item => item.sessions[2].distanceKm || item.sessions[2].distanceRange), [8, 8, 12, 10, 8, 9, [5, 6]]);
+  assert.deepEqual(result.weeks.map(item => item.sessions[6].distanceKm || item.sessions[6].distanceRange), [15, 15, 16, 16, 15, [12, 14], 21.0975]);
+  for (const index of [0, 1, 2, 3, 4]) {
+    for (const day of [0, 3]) {
+      assert.deepEqual(result.weeks[index].sessions[day].durationMinutes, [50, 60]);
+      assert.deepEqual(result.weeks[index].sessions[day].segments[0].pace, [370, 400]);
+    }
+  }
+  for (const index of [0, 3]) assert.deepEqual(result.weeks[index].sessions[2].segments[0].pace, [305, 310]);
+  for (const index of [1, 4]) {
+    assert.deepEqual(result.weeks[index].sessions[2].segments.map(segment => [segment.role, segment.distanceKm, ...segment.pace]), [
+      ['interval', 2, 300, 305], ['recovery', 1, 355, 355],
+      ['interval', 2, 300, 305], ['recovery', 1, 355, 355], ['interval', 2, 300, 305]
+    ]);
+    assert.deepEqual(result.weeks[index].sessions[6].segments.map(segment => [segment.distanceKm, ...segment.pace]), [
+      [5, 370, 370], [5, 345, 345], [5, 310, 315]
+    ]);
+  }
+  assert.deepEqual(result.weeks[2].sessions[2].segments.map(segment => [segment.distanceKm, ...segment.pace]), [
+    [4, 350, 350], [4, 330, 330], [4, 305, 310]
+  ]);
+  assert.deepEqual(result.weeks[5].sessions[2].segments.map(segment => [segment.distanceKm, ...segment.pace]), [
+    [3, 350, 350], [3, 330, 330], [3, 305, 310]
+  ]);
+  assert.deepEqual(result.weeks[3].sessions[6].segments.map(segment => [segment.distanceKm, ...segment.pace]), [
+    [10, 335, 340], [6, 310, 312]
+  ]);
+  for (const index of [0, 2, 5]) assert.deepEqual(result.weeks[index].sessions[6].segments[0].pace, [370, 400]);
+  assert.deepEqual(result.weeks[5].sessions[0].durationMinutes, [40, 50]);
+  assert.deepEqual(result.weeks[5].sessions[3].durationMinutes, [40, 50]);
+  assert.deepEqual(result.weeks[6].sessions[0].durationMinutes, [35, 45]);
+  assert.deepEqual(result.weeks[6].sessions[3].durationMinutes, [30, 40]);
+  assert.deepEqual(result.weeks.map(item => item.sessions[4].durationMinutes), [[20, 30], [20, 30], [20, 30], [20, 20], [20, 30], [15, 20], [10, 15]]);
+  assert.deepEqual(result.weeks[6].sessions[2].segments[0].pace, [312, 312]);
+  assert.match(result.weeks[3].sessions[6].paceLines[1], /5:10–5:12/);
+});
+
+test('110 minutes keeps the image activation pace and the exact race target distinct', () => {
+  const result = plan({ targetSeconds: 6600 });
+  const race = result.weeks[6].sessions[6];
+  assert.equal(race.targetSeconds, 6600);
+  approximately(race.segments[0].pace[0] * race.distanceKm, 6600);
+  assert.equal(result.templateRacePace, 312);
+  assert.match(race.paceLines[0], /5:13/);
+  assert.match(race.notes.join(' '), /5:12.8/);
+});
+
+test('107:30 interpolates each course and each range endpoint without changing the seven-week prescription', () => {
+  const result = plan({ targetSeconds: 6450 });
+  assert.equal(result.calibration.mode, 'interpolated');
+  assert.equal(result.calibration.exactAnchorTarget, null);
+  assert.equal(result.calibration.nearestAnchorTarget, null);
+  assert.match(result.calibration.description, /每课配速区间的两端插值/);
+  assert.deepEqual(result.weeks[0].sessions[0].segments[0].pace, [365, 395]);
+  assert.deepEqual(result.weeks[0].sessions[2].segments[0].pace, [297.5, 302.5]);
+  assert.deepEqual(result.weeks[1].sessions[2].segments[1].pace, [347.5, 347.5]);
+  assert.deepEqual(result.weeks[1].sessions[6].segments.map(segment => segment.pace), [[365, 365], [337.5, 337.5], [302.5, 307.5]]);
+  assert.deepEqual(result.weeks[3].sessions[6].segments.map(segment => segment.pace), [[327.5, 332.5], [302.5, 303.5]]);
+  assert.deepEqual(result.weeks[6].sessions[2].segments[0].pace, [305, 305]);
+  approximately(result.weeks[6].sessions[6].segments[0].pace[0] * 21.0975, 6450);
+  result.weeks.forEach((item, index) => item.sessions.forEach((session, day) => assert.deepEqual(prescription(session), prescription(week(index).sessions[day]))));
+});
+
+test('goals outside the observed range use the nearest anchor and disclose extrapolation', () => {
+  for (const [target, anchor] of [[7200, 6600], [5700, 6300]]) {
+    const reference = plan({ targetSeconds: anchor });
+    const mapped = plan({ targetSeconds: target });
+    const expectedDelta = (target - anchor) / 21.0975;
+    assert.equal(mapped.calibration.mode, 'extrapolated');
+    assert.equal(mapped.calibration.nearestAnchorTarget, anchor);
+    assert.equal(mapped.calibration.exactAnchorTarget, null);
+    assert.match(mapped.calibration.description, /外推参考/);
     reference.weeks.forEach((sourceWeek, index) => {
       sourceWeek.sessions.forEach((source, day) => {
         const changed = mapped.weeks[index].sessions[day];
@@ -120,12 +191,32 @@ test('a different goal shifts every training pace uniformly while leaving workou
   }
 });
 
+test('course paces are continuous at both anchor boundaries and never reverse their ranges', () => {
+  for (const target of [6300, 6600]) {
+    const before = plan({ targetSeconds: target - 0.001 });
+    const exact = plan({ targetSeconds: target });
+    const after = plan({ targetSeconds: target + 0.001 });
+    exact.weeks.forEach((item, index) => item.sessions.forEach((session, day) => session.segments.forEach((segment, part) => {
+      for (const bound of [0, 1]) {
+        approximately(before.weeks[index].sessions[day].segments[part].pace[bound], segment.pace[bound], 0.0001);
+        approximately(after.weeks[index].sessions[day].segments[part].pace[bound], segment.pace[bound], 0.0001);
+      }
+    })));
+  }
+  for (const targetSeconds of [5700, 6300, 6450, 6600, 7200, 10800]) {
+    const result = plan({ targetSeconds });
+    assert.ok(result.weeks.flatMap(item => item.sessions).flatMap(item => item.segments).every(item => item.pace[0] <= item.pace[1]));
+  }
+});
+
 test('all personal capability inputs are ignored by the main prescription', () => {
-  const reference = plan();
-  const weak = plan({ weeklyKm: 5, longestRun: 3, longRun: 3, runDays: 2, personal: { restingHr: 90, maxHr: 160, vo2max: 25 }, records: [{ elapsedSeconds: 9000 }], assessment: { fit: { score: 10 } } });
-  const strong = plan({ weeklyKm: 120, longestRun: 35, longRun: 35, runDays: 7, personal: { restingHr: 40, maxHr: 200, vo2max: 70 }, records: [{ elapsedSeconds: 4500 }], assessment: { fit: { score: 99 } } });
-  assert.deepEqual(weak, reference);
-  assert.deepEqual(strong, reference);
+  for (const targetSeconds of [6300, 6450, 6600, 7200]) {
+    const reference = plan({ targetSeconds });
+    const weak = plan({ targetSeconds, weeklyKm: 5, longestRun: 3, longRun: 3, runDays: 2, personal: { restingHr: 90, maxHr: 160, vo2max: 25 }, records: [{ elapsedSeconds: 9000 }], assessment: { fit: { score: 10 } } });
+    const strong = plan({ targetSeconds, weeklyKm: 120, longestRun: 35, longRun: 35, runDays: 7, personal: { restingHr: 40, maxHr: 200, vo2max: 70 }, records: [{ elapsedSeconds: 4500 }], assessment: { fit: { score: 99 } } });
+    assert.deepEqual(weak, reference);
+    assert.deepEqual(strong, reference);
+  }
 });
 
 test('Sunday races use the image Monday-to-Sunday rhythm and stop on race day', () => {
@@ -181,6 +272,18 @@ test('additional bridge weeks are labeled and leave all seven dated core weeks u
     assert.deepEqual(actual.sessions, original.weeks[index].sessions);
     assert.deepEqual(actual.totalKm, original.weeks[index].totalKm);
   });
+});
+
+test('1:50 bridge work uses its easy pace while preserving the exact core template', () => {
+  const original = plan({ targetSeconds: 6600 });
+  const extended = plan({ targetSeconds: 6600, fromDate: '2026-08-17' });
+  assert.equal(extended.summary.bridgeWeeks, 2);
+  for (const current of extended.weeks.slice(0, 2)) {
+    for (const session of current.sessions.filter(item => ['easy', 'long'].includes(item.kind))) {
+      assert.deepEqual(session.segments[0].pace, [370, 400]);
+    }
+  }
+  extended.weeks.slice(2).forEach((current, index) => assert.deepEqual(current.sessions, original.weeks[index].sessions));
 });
 
 test('duration-based distances remain estimates and weekly volumes are ranges', () => {
