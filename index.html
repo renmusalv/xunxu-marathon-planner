@@ -60,7 +60,7 @@
       </div>
       <p class="overview-summary" id="overviewSummary">补充真实训练与近期成绩，了解目标和当前能力的距离。</p>
       <div class="overview-evidence"><span id="overviewEvidence">成绩依据待补充</span><span id="overviewBaseline">训练基础待补充</span></div>
-      <div class="overview-actions"><button type="button" class="health-entry" id="openHealthButton"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.8 4.6a5.4 5.4 0 0 0-7.6 0L12 5.8l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6L12 21l8.8-8.8a5.4 5.4 0 0 0 0-7.6Z"/><path d="m5 12 4 .1 2-4 2 8 2-4h4"/></svg><span>导入健康数据</span></button><p>准备度规则评分<br>并非比赛成功概率</p></div>
+      <p class="overview-summary">目标成绩适配度需结合近期比赛或全力测试；个人训练基础在“个人资料”中维护，并直接用于下方课表难度判断。</p>
       <details id="goalDetails" class="goal-details"><summary><span>查看完整评估与建议配速</span><span class="details-arrow" aria-hidden="true">⌄</span></summary><div class="goal-details-body"><section class="risk-assessment" id="riskAssessment" aria-live="polite" hidden>
           <div class="risk-heading"><div><div class="summary-label">GOAL FIT · PLANNING ESTIMATE</div><h3>目标完成适配度 <strong id="fitScore">—</strong><span>/100</span></h3></div><span id="riskBadge" class="risk-badge">风险待评估</span></div>
           <div class="risk-track"><i id="fitBar"></i></div>
@@ -121,8 +121,8 @@
           </details>
         </div>
         <div id="panel-personal" role="tabpanel" aria-labelledby="tab-personal" hidden>
-          <button type="button" class="health-inline-entry" id="openHealthFromProfile"><span><strong>用健康记录补充训练基础</strong><small id="healthImportStatus">导入 Apple 健康文件，核对后自动填写</small></span><span aria-hidden="true">↗</span></button>
-          <div class="section-intro"><span class="section-kicker">你的近期实际状态</span><h3>当前训练基础</h3><p>填写最近 3–4 周的真实训练，用于判断负荷和完成难度。不清楚的项目可留空。</p></div>
+          <button type="button" class="health-inline-entry" id="openHealthFromProfile"><span><strong>导入健康数据</strong><small id="healthImportStatus">导入 Apple 健康文件，应用后纳入训练计划难度评估</small></span><span aria-hidden="true">↗</span></button>
+          <div class="section-intro"><span class="section-kicker">你的近期实际状态</span><h3>当前训练基础</h3><p>导入的近期跑量、最长跑和训练频率会直接作为个人训练基础，用于判断计划负荷与完成难度；比赛配速判断仍需确认比赛或全力测试成绩。</p></div>
         <div class="field"><label for="weeklyKm">目前周跑量</label><div class="pace-input"><input id="weeklyKm" type="number" min="0" max="160" placeholder="近 4 周平均"/><span>km</span></div><small>填写最近 3–4 周的平均值，不含比赛周。</small></div>
         <div class="split"><div class="field"><label for="days">目前每周跑步天数</label><select id="days"><option value="" selected>请选择</option><option value="1">1 天</option><option value="2">2 天</option><option value="3">3 天</option><option value="4">4 天</option><option value="5">5 天</option><option value="6">6 天</option><option value="7">7 天</option></select></div><div class="field"><label for="longRun">近 30 天最长跑</label><div class="pace-input"><input id="longRun" type="number" min="0" max="42" placeholder="如 14"/><span>km</span></div></div></div>
         <p class="field-note" id="scheduleBasisHint">半马专项固定 4 跑 + 1 次力量。跑量、最长跑和目前频率用于难度评估。</p>
@@ -157,7 +157,7 @@
         <section class="template-panel" id="templatePanel" hidden aria-label="目标课表与实际完成难度">
           <div class="template-heading"><div><div class="summary-label">TARGET PLAN · 7-WEEK STRUCTURE</div><h3 id="templateTitle">半马 1:45 目标课表</h3></div><span class="template-tag">按目标设定配速</span></div>
           <p id="templateCopy"></p>
-          <div class="plan-difficulty"><div><span>实际完成难度预测</span><strong id="planDifficultyLabel">资料不足</strong></div><p id="planDifficultyReason"></p></div>
+          <div class="plan-difficulty"><div><span>训练计划完成难度</span><strong id="planDifficultyLabel">资料不足</strong></div><p id="planDifficultyReason"></p></div>
           <details class="template-details"><summary>查看课表逻辑、日期安排与难度判断规则</summary><div id="templateNotes"></div><p id="difficultyMethod"></p></details>
         </section>
         </div></details>
@@ -190,7 +190,7 @@
         <div id="healthFieldChoices" class="health-field-choices"></div>
         <div class="health-frequency"><label for="healthRunDays">确认平常每周跑步天数</label><select id="healthRunDays"><option value="">暂不更新</option><option value="1">1 天</option><option value="2">2 天</option><option value="3">3 天</option><option value="4">4 天</option><option value="5">5 天</option><option value="6">6 天</option><option value="7">7 天</option></select><small id="healthRunDaysHint"></small></div>
         <label class="health-coverage"><input type="checkbox" id="healthCoverage"/><span>我确认上述 28 天的跑步记录完整<small>没有记录不等于没有训练。记录不完整时，取消周跑量与天数的更新，之后手动补充。</small></span></label>
-        <div class="health-apply-area"><p id="healthDataDestination" class="health-muted"></p><button type="button" class="generate" id="healthApplyButton">应用所选数据并生成课表</button></div>
+        <div class="health-apply-area"><p id="healthDataDestination" class="health-muted"></p><button type="button" class="generate" id="healthApplyButton">应用到个人资料并更新难度评估</button></div>
         <div class="health-evaluation-hint" id="healthEvaluationHint" role="note"></div><div class="health-candidate-heading"><h3>可核对的历史跑步</h3><p>健康记录无法判断是否全力完成。核对比赛 / 测试性质、标准距离和完整计时后，才用于比赛能力分析。</p></div><div id="healthCandidates"></div>
         <details class="health-more"><summary>数据范围与分析限制</summary><div id="healthWarnings"></div><p>训练连续性、近期身体状态需要你确认。单次最高心率不会自动填为个人最大心率；设备 VO₂max 只作补充记录。</p></details>
       </section>
