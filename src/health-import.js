@@ -9,7 +9,7 @@
 
   const DAY = 86400000;
   const HALF = 21.0975;
-  const LIMITS = Object.freeze({ textCharacters: 64 * 1024 * 1024, tagCharacters: 1024 * 1024, records: 5000000, workouts: 20000, zipEntries: 20000, zipDirectoryBytes: 16 * 1024 * 1024, zipXmlCandidates: 32, zipProbeBytes: 1024 * 1024, compressionRatio: 300 });
+  const LIMITS = Object.freeze({ textCharacters: 64 * 1024 * 1024, tagCharacters: 1024 * 1024, records: 50000000, workouts: 20000, raceCandidates: 12, zipEntries: 20000, zipDirectoryBytes: 16 * 1024 * 1024, zipXmlCandidates: 32, zipProbeBytes: 1024 * 1024, compressionRatio: 300 });
   const TYPE = 'HKQuantityTypeIdentifier';
   const REST = TYPE + 'RestingHeartRate';
   const VO2 = TYPE + 'VO2Max';
@@ -113,7 +113,9 @@
     const todayString = dateString(today), start28 = today - 28 * DAY, start30 = today - 29 * DAY;
     const oldestCandidate = today - 365 * DAY;
     const warnings = new Set();
-    const workouts = [];
+    // Keep recent runs needed for training summaries and only a small set of
+    // recent 10 km / half-marathon clues. Old short runs are scanned, not kept.
+    const workouts = [], candidateWorkouts = [];
     const personal = { restingHr: null, vo2max: null };
     let buffer = '', rootSeen = false, rootClosed = false, stack = [], workout = null, processed = 0, skippedRuns = 0, earliestRelevant = null, exportDate = null;
 
@@ -129,6 +131,23 @@
       const key = isRest ? 'restingHr' : 'vo2max', ageDays = Math.floor((today - dateValue(date.date)) / DAY);
       if (ageDays > 365) return;
       if (!personal[key] || date.time > personal[key]._time) personal[key] = { value: round(value, isRest ? 0 : 1), date: date.date, unit: isRest ? 'bpm' : 'ml/kg/min', source: sourceName(record.sourceName), ageDays, stale: ageDays > (isRest ? 30 : 180), _time: date.time };
+    }
+    function mergeDuplicate(target, item) {
+      const mergedAverage = target.averageHr === null ? item.averageHr : target.averageHr;
+      const mergedPeak = target.peakHr === null ? item.peakHr : target.peakHr;
+      if (mergedAverage === null || mergedPeak === null || mergedAverage <= mergedPeak) { target.averageHr = mergedAverage; target.peakHr = mergedPeak; }
+      else warnings.add('重复记录间心率数据互相冲突，未合并冲突的心率值。');
+      if (target.elapsedSeconds === null) target.elapsedSeconds = item.elapsedSeconds;
+      if (target.activeSeconds === null) target.activeSeconds = item.activeSeconds;
+      if (item.course === 'treadmill') target.course = 'treadmill';
+    }
+    function addRaceCandidate(item, standardDistanceKm) {
+      const duplicate = candidateWorkouts.find(other => Math.abs(other._start - item._start) <= 60000 && other._end !== null && item._end !== null && Math.abs(other._end - item._end) <= 60000 && Math.abs(other.distanceKm - item.distanceKm) <= Math.max(0.1, item.distanceKm * 0.01));
+      if (duplicate) { mergeDuplicate(duplicate, item); return; }
+      if (candidateWorkouts.length >= LIMITS.raceCandidates && item._start < candidateWorkouts[candidateWorkouts.length - 1]._start) return;
+      candidateWorkouts.push({...item, standardDistanceKm});
+      candidateWorkouts.sort((a, b) => b._start - a._start);
+      if (candidateWorkouts.length > LIMITS.raceCandidates) candidateWorkouts.length = LIMITS.raceCandidates;
     }
     function finishWorkout() {
       if (!workout || workout.type !== 'HKWorkoutActivityTypeRunning') { workout = null; return; }
@@ -149,8 +168,13 @@
       if (elapsed !== null && active !== null && active > elapsed + 5) { warnings.add('部分跑步活动时长大于起止时间差，计时需重新核对。'); elapsed = null; }
       let averageHr = w.averageHr, peakHr = w.peakHr;
       if (averageHr !== null && peakHr !== null && averageHr > peakHr) { averageHr = null; peakHr = null; warnings.add('部分跑步的平均心率大于最高心率，未采用这些心率值。'); }
-      if (workouts.length >= LIMITS.workouts) fail('TOO_MANY_WORKOUTS', '近一年跑步记录过多，请选取较小的导出范围。');
-      workouts.push({ date: start.date, distanceKm: round(km, 4), elapsedSeconds: elapsed === null ? null : round(elapsed), activeSeconds: active === null ? null : round(active), averageHr: averageHr === null ? null : round(averageHr), peakHr: peakHr === null ? null : round(peakHr), sourceName: sourceName(w.sourceName), course: w.indoor ? 'treadmill' : 'unknown', _start: start.time, _end: end ? end.time : null });
+      const item = { date: start.date, distanceKm: round(km, 4), elapsedSeconds: elapsed === null ? null : round(elapsed), activeSeconds: active === null ? null : round(active), averageHr: averageHr === null ? null : round(averageHr), peakHr: peakHr === null ? null : round(peakHr), sourceName: sourceName(w.sourceName), course: w.indoor ? 'treadmill' : 'unknown', _start: start.time, _end: end ? end.time : null };
+      const near10 = Math.abs(item.distanceKm - 10) <= 0.2, nearHalf = Math.abs(item.distanceKm - HALF) <= 0.45;
+      if (day >= oldestCandidate && (near10 || nearHalf)) addRaceCandidate(item, near10 ? 10 : HALF);
+      if (day >= start30) {
+        if (workouts.length >= LIMITS.workouts) fail('TOO_MANY_WORKOUTS', '近 30 天跑步记录异常多，已停止读取以保护设备。请保留较新的健康导出文件后重试。');
+        workouts.push(item);
+      }
     }
     function processTag(tag) {
       if (++processed > LIMITS.records) fail('TOO_MANY_RECORDS', '健康文件记录过多，请先导出较小范围。');
@@ -225,7 +249,7 @@
       });
       const last30 = deduped.filter(w => dateValue(w.date) >= start30 && w.date <= todayString);
       const totalKm = recent.reduce((total, w) => total + w.distanceKm, 0);
-      const candidates = deduped.filter(w => Math.abs(w.distanceKm - 10) <= 0.2 || Math.abs(w.distanceKm - HALF) <= 0.45).sort((a, b) => b._start - a._start).slice(0, 40).map(w => ({ date: w.date, distanceKm: w.distanceKm, standardDistanceKm: Math.abs(w.distanceKm - 10) <= 0.2 ? 10 : HALF, elapsedSeconds: w.elapsedSeconds, activeSeconds: w.activeSeconds, averageHr: w.averageHr, peakHr: w.peakHr, sourceName: w.sourceName, course: w.course, source: 'apple_health', effort: 'unknown', durationType: 'unknown', durationBasis: w.elapsedSeconds !== null ? 'start_end' : w.activeSeconds !== null ? 'active_only' : 'unknown', confirmed: false, include: false }));
+      const candidates = candidateWorkouts.map(w => ({ date: w.date, distanceKm: w.distanceKm, standardDistanceKm: w.standardDistanceKm, elapsedSeconds: w.elapsedSeconds, activeSeconds: w.activeSeconds, averageHr: w.averageHr, peakHr: w.peakHr, sourceName: w.sourceName, course: w.course, source: 'apple_health', effort: 'unknown', durationType: 'unknown', durationBasis: w.elapsedSeconds !== null ? 'start_end' : w.activeSeconds !== null ? 'active_only' : 'unknown', confirmed: false, include: false }));
       if (duplicates) warnings.add('已合并 ' + duplicates + ' 条起止时间及距离相近的重复跑步记录，避免多设备重复计量。');
       if (skippedRuns) warnings.add('有 ' + skippedRuns + ' 条跑步记录缺少可靠日期或距离，未计入汇总。');
       if (!recent.length) warnings.add('最近 28 个完整日没有可用跑步记录；这不代表没有训练，请核对导出范围。');
@@ -239,7 +263,7 @@
         coverage: { completeness: 'unverified', earliestRelevantDate: earliestRelevant === null ? null : dateString(earliestRelevant), hasHistoryBeforeWindow: earliestRelevant !== null && earliestRelevant <= start28 },
         personal, candidates, duplicatesRemoved: duplicates, skippedRunningWorkouts: skippedRuns,
         warnings: Array.from(warnings),
-        limitations: ['统计仅代表文件中记录的跑步；未记录的日期不等于休息。请确认近 28 日记录完整后应用周跑量。', '日常训练不等于比赛或全力测试。候选成绩的比赛性质、标准距离、完整计时与路线仍需逐条核对。', '活动时长可能扣除暂停；起止时间差只是可核对的完整时间线索，不等于官方比赛成绩。', '本次最高心率不会作为个人最大心率；设备 VO₂max 为估算参考。']
+        limitations: ['导入只整理近 28 日周跑量、近 30 日最长跑、健康指标，以及近一年最多 12 条接近 10 km / 半马的较新候选；其他历史跑步不会逐条加入档案。', '统计仅代表文件中记录的跑步；未记录的日期不等于休息。请确认近 28 日记录完整后应用周跑量。', '日常训练不等于比赛或全力测试。候选成绩的比赛性质、标准距离、完整计时与路线仍需逐条核对。', '活动时长可能扣除暂停；起止时间差只是可核对的完整时间线索，不等于官方比赛成绩。', '本次最高心率不会作为个人最大心率；设备 VO₂max 为估算参考。']
       };
     }
     return { push, finish };
