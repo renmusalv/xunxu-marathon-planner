@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
     const weekdays = ['周一','周二','周三','周四','周五','周六','周日'];
-    let durationInputs=null,mobileSchedule=null,workspace=null;
+    let durationInputs=null,mobileSchedule=null,workspace=null,goalOverview=null,healthPanel=null;
     let activeCheckinKey='',activePlanStartDate='',checkins={},profiles=[],activeProfileId='default';
     const heartFieldIds=['restingHr','maxHr','maxHrSource','thresholdHr','thresholdHrSource'];
     const vo2FieldIds=['vo2max','vo2maxSource','vo2maxDate'];
@@ -39,6 +39,7 @@ const $ = id => document.getElementById(id);
       catch(error){storageError(error.message);return false}
     }
     function loadProfileForm(profileId){
+      healthPanel?.reset();goalOverview?.reset();if($('goalDetails'))$('goalDetails').open=false;
       clearTimeout(formUpdateTimer);cancelRecordDraft();activeProfileId=profileId;checkins={};activeCheckinKey='';lastAssessment=null;lastAssessmentInput=null;
       const values={...defaultProfileForm,...cloud.getData(profileId).form};
       profileFieldIds.forEach(id=>{$(id).value=values[id]??''});$('profileSelect').value=profileId;
@@ -203,7 +204,7 @@ function renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,r
   if(!plan.valid){showGenerationError(plan.error,'raceDate');return}
   const currentValid=$('weeklyKm').value!==''&&Number.isFinite(current)&&current>=0&&current<=160;
   const longValid=$('longRun').value!==''&&Number.isFinite(longBase)&&longBase>=0&&longBase<=42;
-  const context={weeklyKm:currentValid?current:null,longestRun:longValid?longBase:null,runDays:[3,4,5].includes(runDays)?runDays:null,personal:personalValues(),now:dateKey(now)};
+  const context={weeklyKm:currentValid?current:null,longestRun:longValid?longBase:null,runDays:Number.isInteger(runDays)&&runDays>=1&&runDays<=7?runDays:null,personal:personalValues(),now:dateKey(now)};
   const result=buildAssessment({distanceKm:21.0975,targetSeconds:target,raceDate:dateValue,...context});
   renderGoalRisk(result);renderAbility(result,goal);
   const advice=SessionAdvice.forPlan(plan,result,context),days=Math.ceil((race-now)/86400000),remainingWeeks=Math.ceil((days+1)/7);
@@ -254,6 +255,7 @@ function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':
 function storageError(message){$('storageStatus').textContent=message;$('storageStatus').hidden=false}
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true},4200)}
 function refreshPlanInterface(){
+  updateGoalOverview();updateHealthImportStatus();
   if(!mobileSchedule&&!workspace)return;
   mobileSchedule?.refresh({profileKey:`${accountEpoch}:${currentUserId||'guest'}:${activeProfileId}`,planKey:activeCheckinKey});
   const failed=$('generationStatus').textContent.startsWith('计划未更新'),hold=lastAssessment?.fit?.hold;
@@ -263,6 +265,53 @@ function refreshPlanInterface(){
   $('mobilePlanStatus').dataset.level=level||'unknown';
   $('mobilePlanStatus').textContent=failed?$('notice').textContent:hold?'当前建议：先恢复，暂缓执行强化训练。':label?.includes('资料不足')?'完成难度待评估 · 可先查看目标课表':`完成难度：${label||'待评估'} · 目标配速保持不变`;
   $('planInsightStatus').textContent=label||'待评估';
+}
+function healthContext(){return{key:`${accountEpoch}:${currentUserId||'guest'}:${activeProfileId}`,profileId:activeProfileId,profileName:profiles.find(item=>item.id===activeProfileId)?.name||'当前档案',mode:storageMode,ready:cloudReady&&!profileSwitching,today:dateKey(new Date()),form:captureProfileForm()}}
+function updateHealthImportStatus(){if(healthPanel&&$('healthImportStatus'))$('healthImportStatus').textContent=healthPanel.status(healthContext().key)}
+function updateGoalOverview(){
+  if(!goalOverview)return;
+  const distance=Number($('distance').value),target=distance<30?parseTimeInput($('halfGoalTime').value):Number($('paceMin').value)*60*distance+Number($('paceSec').value)*distance;
+  goalOverview.update({assessment:lastAssessment,raceDate:$('raceDate').value,targetSeconds:target,distanceKm:distance,profileName:profiles.find(item=>item.id===activeProfileId)?.name||'当前档案',failed:$('generationStatus').textContent.startsWith('计划未更新'),loading:!cloudReady});
+}
+async function applyHealthPatch(patch,context){
+  if(!cloudReady||profileSwitching||context.key!==healthContext().key)throw new Error('当前档案已变化，请在目标档案中重新导入。');
+  const owner=activeProfileId,epoch=accountEpoch,client=cloud;
+  const allowed=['weeklyKm','longRun','days','restingHr','vo2max','vo2maxSource','vo2maxDate'];
+  if(Object.keys(patch).some(key=>!allowed.includes(key)))throw new Error('健康摘要含有不支持的字段。');
+  clearTimeout(formUpdateTimer);saveProfileForm();clearTimeout(cloudSaveTimer);
+  await client.commit(owner,data=>{data.form={...data.form,...patch};return data});
+  if(epoch!==accountEpoch||owner!==activeProfileId||client!==cloud)return;
+  const saved=client.getData(owner).form;
+  Object.keys(patch).forEach(key=>{$(key).value=saved[key]??''});
+  updatePersonalSummary();render();
+}
+function finishHealthApply(context){
+  if(context.key!==healthContext().key)return;
+  updateHealthImportStatus();
+  const generated=$('generationStatus').textContent.startsWith('已更新');
+  if(generated){
+    if(workspace?.isMobile())workspace.select('schedule',{scroll:true,focus:true});
+    else $('goalOverview').scrollIntoView({behavior:'smooth',block:'start'});
+  }else if($('generationStatus').textContent.startsWith('计划未更新')){
+    focusValidation=true;render();focusValidation=false;
+  }
+  toast(generated?savedMessage('所选健康摘要已保存到本档案，分析与课表已更新。','所选健康摘要已用于本次分析，试用数据刷新后会丢失。'):lastAssessment?.fit?.hold?'所选健康摘要已应用；当前建议先恢复，暂缓强化训练。':'所选健康摘要已应用，请完善比赛设置后生成课表。');
+}
+function reviewHealthCandidate(candidate,context){
+  if(context.key!==healthContext().key||!cloudReady)return;
+  const draft=freshRecordDraft();draft.filename='Apple Health';draft.rawText=`健康导入：${candidate.date}；记录距离 ${candidate.distanceKm} km；起止间隔 ${candidate.elapsedSeconds??'未提供'} 秒；活动用时 ${candidate.activeSeconds??'未提供'} 秒；来源 ${candidate.sourceName||'Apple 健康'}。请核对正式距离、完整计时和比赛性质。`;
+  draft.dirty=true;
+  $('recordDistance').value=String(candidate.standardDistanceKm||'');
+  const duration=candidate.elapsedSeconds||candidate.activeSeconds;
+  $('recordTime').value=duration?clock(duration).padStart(8,'0'):'';
+  $('recordDate').value=candidate.date||'';
+  $('recordAverageHr').value=candidate.averageHr??'';$('recordPeakHr').value=candidate.peakHr??'';
+  $('recordEffort').value='';$('recordDurationType').value='unknown';$('recordCourse').value=candidate.course==='treadmill'?'treadmill':'unknown';$('recordInclude').checked=true;
+  $('imagePlaceholder').innerHTML='健康文件导入<br><small>已读取跑步与心率记录，请核对</small>';
+  $('imageFilename').textContent='Apple 健康导入 · 原始文件未上传';$('rawTextDetails').hidden=false;$('rawText').textContent=draft.rawText;
+  $('recognitionMessage').textContent=`已填入记录线索。实际记录距离 ${candidate.distanceKm} km，请核对标准比赛距离、完整计时及是否全力完成。`;
+  $('recognitionFields').hidden=false;$('recognitionFields').textContent='日期、用时与记录内的平均 / 最高心率已回填；确认后才参与评估。';
+  durationInputs?.sync('recordTime');updateRecordDerived();updateRecordHeartSummary();$('recordHeartDetails').open=Boolean(candidate.averageHr||candidate.peakHr);
 }
 function selectSetupTab(name){
   workspace?.select('profile');
@@ -285,7 +334,7 @@ function renderRecords(){
   $('recordCount').textContent=String(currentRecords.length);$('recordsCaption').textContent=currentRecords.length+' 条';
   const included=currentRecords.filter(recordUsable).length;
   $('recordNudgeText').textContent=currentRecords.length?`${currentRecords.length} 条成绩 · ${included} 条候选依据，按日期与距离筛选`:'上传 10 km / 半马截图，或手动添加成绩';
-  $('recordList').innerHTML=currentRecords.length?currentRecords.map(record=>`<article class="record-card"><div class="record-card-top"><strong>${recordName(record.distanceKm)}</strong><small>${escapeHtml(record.date)}</small></div><div class="record-card-time">${clock(record.elapsedSeconds)}<small>${fmt(record.elapsedSeconds/record.distanceKm)}/km</small></div><p>${record.source==='screenshot'?'截图已核对':'手动录入'}${record.averageHr?` · 平均 ${record.averageHr} bpm`:''}${record.peakHr?` · 本次最高 ${record.peakHr}`:''}</p><div class="record-card-bottom"><span class="record-tag${recordUsable(record)?'':' muted'}">${recordUsable(record)?'参与评估筛选':'仅留档'}</span><div class="record-card-actions"><button type="button" data-record-edit="${escapeHtml(record.id)}">查看 / 编辑</button><button type="button" data-record-delete="${escapeHtml(record.id)}">删除</button></div></div></article>`).join(''):'<div class="record-empty">还没有成绩记录<br>上传一张截图，开始了解当前能力。</div>';
+  $('recordList').innerHTML=currentRecords.length?currentRecords.map(record=>`<article class="record-card"><div class="record-card-top"><strong>${recordName(record.distanceKm)}</strong><small>${escapeHtml(record.date)}</small></div><div class="record-card-time">${clock(record.elapsedSeconds)}<small>${fmt(record.elapsedSeconds/record.distanceKm)}/km</small></div><p>${record.source==='screenshot'?'截图已核对':record.filename==='Apple Health'?'健康导入 · 已核对':'手动录入'}${record.averageHr?` · 平均 ${record.averageHr} bpm`:''}${record.peakHr?` · 本次最高 ${record.peakHr}`:''}</p><div class="record-card-bottom"><span class="record-tag${recordUsable(record)?'':' muted'}">${recordUsable(record)?'参与评估筛选':'仅留档'}</span><div class="record-card-actions"><button type="button" data-record-edit="${escapeHtml(record.id)}">查看 / 编辑</button><button type="button" data-record-delete="${escapeHtml(record.id)}">删除</button></div></div></article>`).join(''):'<div class="record-empty">还没有成绩记录<br>上传一张截图，开始了解当前能力。</div>';
 }
 function personalValues(){return Object.fromEntries(personalFieldIds.map(id=>[id,$(id).value]))}
 function validatePersonal(){
@@ -391,6 +440,7 @@ function freshRecordDraft(record){
   recordDraft={dirty:false,saving:false,owner:activeProfileId,id,existing:Boolean(record),record:record||null,controller:new AbortController(),job:recordJob,blob:null,objectUrl:null,rawText:record?.rawText||'',fingerprint:record?.fingerprint||null,source:record?.source||'manual'};
   $('recordForm').reset();$('recordOwner').textContent=profiles.find(profile=>profile.id===activeProfileId)?.name||'当前档案';
   $('recordDate').max=dateKey(new Date());$('recordPreview').hidden=true;$('recordPreview').removeAttribute('src');$('imagePlaceholder').hidden=false;$('imageFilename').textContent='';
+  $('imagePlaceholder').innerHTML=record?.filename==='Apple Health'?'健康文件导入<br><small>已读取跑步与心率记录，请核对</small>':'手动添加成绩<br><small>不需要上传截图也可保存</small>';
   $('recordError').hidden=true;$('recognitionWarnings').hidden=true;$('recognitionFields').hidden=true;$('recognitionFields').textContent='';$('recordHeartDetails').open=false;$('rawTextDetails').hidden=true;$('saveRecordButton').disabled=false;$('ocrProgress').hidden=true;
   $('recognitionStatus').dataset.state='ready';$('recognitionMessage').textContent=record?'请核对已保存的数据，修改只影响本档案。':'请填写实际成绩；选填数据可以留空。';
   if(record){
@@ -528,6 +578,7 @@ function updateCloudStatus(info){
   if(status==='saved'){$('storageStatus').hidden=true}else if(info.error)storageError(info.error.message);
 }
 function clearAccountView(){
+  healthPanel?.reset({clearReports:true});goalOverview?.reset();if($('goalDetails'))$('goalDetails').open=false;
   if($('profileDialog').open)$('profileDialog').close();$('profileName').value='';profileSwitching=false;importBusy=false;$('createProfileSubmit').disabled=false;$('trialImportError').hidden=true;
   clearTimeout(cloudSaveTimer);clearTimeout(formUpdateTimer);cancelRecordDraft(true);$('recordForm').reset?.();profiles=[];activeProfileId='default';currentRecords=[];checkins={};activeCheckinKey='';activePlanStartDate='';lastAssessment=null;lastAssessmentInput=null;
   profileFieldIds.forEach(id=>{$(id).value=defaultProfileForm[id]??''});
@@ -705,6 +756,10 @@ async function reloadCloud(){
 if(typeof XunxuDurationInput!=='undefined')durationInputs=XunxuDurationInput.mount(document);
 if(typeof XunxuMobileSchedule!=='undefined')mobileSchedule=XunxuMobileSchedule.create({root:$('weekList')});
 if(typeof XunxuWorkspace!=='undefined')workspace=XunxuWorkspace.create({shell:$('workspaceShell'),profile:$('plannerForm'),plan:$('planWorkspace'),tabs:$('workspaceTabs'),onSchedule:()=>mobileSchedule?.activate()});
+if(typeof XunxuGoalOverview!=='undefined')goalOverview=XunxuGoalOverview.create({root:$('goalOverview'),hero:$('raceHero'),heroToggle:$('heroToggle')});
+if(typeof XunxuHealthPanel!=='undefined'&&typeof XunxuHealthImport!=='undefined')healthPanel=XunxuHealthPanel.create({dialog:$('healthDialog'),engine:XunxuHealthImport,getContext:healthContext,onApply:applyHealthPatch,onApplied:finishHealthApply,onReviewCandidate:reviewHealthCandidate,onStatus:updateHealthImportStatus});
+$('openHealthButton').addEventListener('click',()=>healthPanel?.open());$('openHealthFromProfile').addEventListener('click',()=>healthPanel?.open());
+$('editGoalButton').addEventListener('click',()=>{selectSetupTab('race');$('raceDate').focus();$('panel-race').scrollIntoView({behavior:'smooth',block:'start'})});
 $('profileSelect').addEventListener('change',()=>switchProfile($('profileSelect').value));
 $('addProfileButton').addEventListener('click',()=>{if(!cloudReady)return;$('profileName').value='';$('profileName').setCustomValidity('');$('profileDialog').showModal();$('profileName').focus()});
 $('cancelProfileButton').addEventListener('click',()=>$('profileDialog').close());$('profileName').addEventListener('input',()=>$('profileName').setCustomValidity(''));

@@ -10,6 +10,10 @@
     if (!shell || !profile || !plan || !tabs) return null;
     const doc = shell.ownerDocument;
     const win = doc.defaultView;
+    // The race overview remains above this ordinary-flow anchor. Targeting a
+    // sticky tab bar uses its current stuck position, while targeting the shell
+    // sends people back through the hero and any expanded assessment details.
+    const scrollAnchor = options.scrollAnchor || doc.getElementById('workspaceAnchor') || shell;
     const media = win.matchMedia('(max-width: 900px)');
     const buttons = Array.from(tabs.querySelectorAll('[data-view]'));
     const disclosures = ['planInsights', 'planExplanation'].map(id => doc.getElementById(id)).filter(Boolean);
@@ -52,7 +56,7 @@
       updatePanels();
       if (media.matches) {
         if (focus) doc.getElementById('view-' + view)?.focus({preventScroll: true});
-        if (scroll) shell.scrollIntoView({behavior: win.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'});
+        if (scroll) scrollAnchor.scrollIntoView({behavior: win.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'});
       }
     }
 
