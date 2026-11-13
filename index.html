@@ -27,7 +27,7 @@
   <link rel="stylesheet" href="./mobile-schedule.css" />
   <link rel="stylesheet" href="./dashboard.css" />
   <link rel="stylesheet" href="./health-panel.css" />
-</head>
+  <link rel="stylesheet" href="./event-preview.css" /></head>
 <body>
   <main class="shell" id="workspaceShell" data-workspace-view="profile">
     <header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true">∿</div><span>循序 <span style="font-weight:450;color:#89938b">/ ENDURANCE PLANNER</span></span></div><button type="button" id="heroToggle" class="hero-toggle" aria-controls="raceHero" aria-expanded="true"><span data-hero-toggle-label>收起头图</span></button></header>
@@ -61,7 +61,7 @@
           <details class="data-details"><summary>使用了哪些成绩与个人资料？</summary><div id="evidenceDetails"></div><div id="physiologyDetails"></div></details>
         </section></div></details>
     </section>
-    <div id="workspaceAnchor" aria-hidden="true" style="height:1px"></div>
+    <section class="event-preview" id="eventPreview" aria-labelledby="eventPreviewTitle"><header class="event-preview-head"><div><span class="section-kicker">RACE CALENDAR · NEXT 6 MONTHS</span><h2 id="eventPreviewTitle">未来半年 · 国内半马赛事</h2><p>查看报名时间、比赛日期和赛道消息。报名与路线以组委会最新公告为准。</p></div><div class="event-preview-count" id="eventPreviewCount" aria-live="polite"></div></header><div class="event-preview-filters" role="group" aria-label="按报名状态筛选赛事"><button type="button" data-event-filter="all" aria-pressed="true">全部 <span id="eventCountAll">0</span></button><button type="button" data-event-filter="open" aria-pressed="false">报名中 <span id="eventCountOpen">0</span></button><button type="button" data-event-filter="pending" aria-pressed="false">待公布 <span id="eventCountPending">0</span></button><button type="button" data-event-filter="closed" aria-pressed="false">已截止 <span id="eventCountClosed">0</span></button></div><p class="event-preview-updated" id="eventPreviewUpdated"></p><div class="event-preview-list" id="eventPreviewList" aria-live="polite"></div><p class="event-preview-footnote">本列表收录目前已查到赛期的赛事，不保证覆盖全部赛事。未发布的报名时间或赛道图会标为待公布；日期较远的赛事可能调整。</p></section><div id="workspaceAnchor" aria-hidden="true" style="height:1px"></div>
     <nav class="workspace-tabs" id="workspaceTabs" role="tablist" aria-label="个人资料与课程安排">
       <button type="button" id="view-profile" role="tab" data-view="profile" aria-controls="plannerForm" aria-selected="true">个人资料</button>
       <button type="button" id="view-schedule" role="tab" data-view="schedule" aria-controls="planWorkspace" aria-selected="false" tabindex="-1">课程安排</button>
@@ -234,7 +234,7 @@
   <script src="./health-import.js" defer></script>
   <script src="./health-panel.js" defer></script>
   <script src="./goal-overview.js" defer></script>
-  <script src="./app.js" defer></script>
+  <script src="./event-preview.js" defer></script><script src="./app.js" defer></script>
 
 </body>
 </html>
