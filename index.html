@@ -27,10 +27,26 @@
   <link rel="stylesheet" href="./mobile-schedule.css" />
   <link rel="stylesheet" href="./dashboard.css" />
   <link rel="stylesheet" href="./health-panel.css" />
-  <link rel="stylesheet" href="./event-preview.css" /></head>
+  <link rel="stylesheet" href="./event-preview.css" />
+</head>
 <body>
   <main class="shell" id="workspaceShell" data-workspace-view="profile">
     <header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true">∿</div><span>循序 <span style="font-weight:450;color:#89938b">/ ENDURANCE PLANNER</span></span></div><button type="button" id="heroToggle" class="hero-toggle" aria-controls="raceHero" aria-expanded="true"><span data-hero-toggle-label>收起头图</span></button></header>
+    <section class="event-preview" id="eventPreview" aria-labelledby="eventPreviewTitle" aria-roledescription="赛事轮播">
+      <header class="event-preview-head">
+        <div><span class="section-kicker">RACE CALENDAR · NEXT 6 MONTHS</span><h2 id="eventPreviewTitle">未来半年 · 国内半马赛事</h2><p>左右滑动查看赛事；报名与路线以组委会最新公告为准。</p></div>
+        <div class="event-preview-count" id="eventPreviewCount" aria-live="polite"></div>
+      </header>
+      <div class="event-preview-filters" role="group" aria-label="按报名状态筛选赛事">
+        <button type="button" data-event-filter="all" aria-pressed="true">全部 <span id="eventCountAll">0</span></button>
+        <button type="button" data-event-filter="open" aria-pressed="false">报名中 <span id="eventCountOpen">0</span></button>
+        <button type="button" data-event-filter="pending" aria-pressed="false">待公布 <span id="eventCountPending">0</span></button>
+        <button type="button" data-event-filter="closed" aria-pressed="false">已截止 <span id="eventCountClosed">0</span></button>
+      </div>
+      <div class="event-preview-meta"><p class="event-preview-updated" id="eventPreviewUpdated"></p><div class="event-carousel-controls" aria-label="赛事切换"><button type="button" id="eventPreviewPrev" aria-label="上一场赛事">‹</button><span id="eventPreviewPosition" aria-live="polite">— / —</span><button type="button" id="eventPreviewNext" aria-label="下一场赛事">›</button></div></div>
+      <div class="event-preview-list" id="eventPreviewList" aria-label="未来半年赛事" aria-live="off" tabindex="0"></div>
+      <p class="event-preview-footnote">本列表收录目前已查到赛期的赛事，不保证覆盖全部赛事。未发布的报名时间或赛道图会标为待公布；日期较远的赛事可能调整。</p>
+    </section>
     <section class="race-hero" id="raceHero" aria-label="半马备赛">
       <img src="./assets/half-marathon-hero.jpg" alt="清晨林荫公路上结伴训练的长跑者" width="2172" height="724" fetchpriority="high" />
       <div class="race-hero-copy"><span>YOUR NEXT HALF MARATHON</span><h1>为下一场，循序进阶。</h1><p>目标明确，每一步都有依据。</p></div>
@@ -61,7 +77,7 @@
           <details class="data-details"><summary>使用了哪些成绩与个人资料？</summary><div id="evidenceDetails"></div><div id="physiologyDetails"></div></details>
         </section></div></details>
     </section>
-    <section class="event-preview" id="eventPreview" aria-labelledby="eventPreviewTitle"><header class="event-preview-head"><div><span class="section-kicker">RACE CALENDAR · NEXT 6 MONTHS</span><h2 id="eventPreviewTitle">未来半年 · 国内半马赛事</h2><p>查看报名时间、比赛日期和赛道消息。报名与路线以组委会最新公告为准。</p></div><div class="event-preview-count" id="eventPreviewCount" aria-live="polite"></div></header><div class="event-preview-filters" role="group" aria-label="按报名状态筛选赛事"><button type="button" data-event-filter="all" aria-pressed="true">全部 <span id="eventCountAll">0</span></button><button type="button" data-event-filter="open" aria-pressed="false">报名中 <span id="eventCountOpen">0</span></button><button type="button" data-event-filter="pending" aria-pressed="false">待公布 <span id="eventCountPending">0</span></button><button type="button" data-event-filter="closed" aria-pressed="false">已截止 <span id="eventCountClosed">0</span></button></div><p class="event-preview-updated" id="eventPreviewUpdated"></p><div class="event-preview-list" id="eventPreviewList" aria-live="polite"></div><p class="event-preview-footnote">本列表收录目前已查到赛期的赛事，不保证覆盖全部赛事。未发布的报名时间或赛道图会标为待公布；日期较远的赛事可能调整。</p></section><div id="workspaceAnchor" aria-hidden="true" style="height:1px"></div>
+    <div id="workspaceAnchor" aria-hidden="true" style="height:1px"></div>
     <nav class="workspace-tabs" id="workspaceTabs" role="tablist" aria-label="个人资料与课程安排">
       <button type="button" id="view-profile" role="tab" data-view="profile" aria-controls="plannerForm" aria-selected="true">个人资料</button>
       <button type="button" id="view-schedule" role="tab" data-view="schedule" aria-controls="planWorkspace" aria-selected="false" tabindex="-1">课程安排</button>
@@ -175,7 +191,7 @@
         <div class="health-frequency"><label for="healthRunDays">确认平常每周跑步天数</label><select id="healthRunDays"><option value="">暂不更新</option><option value="1">1 天</option><option value="2">2 天</option><option value="3">3 天</option><option value="4">4 天</option><option value="5">5 天</option><option value="6">6 天</option><option value="7">7 天</option></select><small id="healthRunDaysHint"></small></div>
         <label class="health-coverage"><input type="checkbox" id="healthCoverage"/><span>我确认上述 28 天的跑步记录完整<small>没有记录不等于没有训练。记录不完整时，取消周跑量与天数的更新，之后手动补充。</small></span></label>
         <div class="health-apply-area"><p id="healthDataDestination" class="health-muted"></p><button type="button" class="generate" id="healthApplyButton">应用所选数据并生成课表</button></div>
-        <div class="health-candidate-heading"><h3>可核对的历史跑步</h3><p>健康记录无法判断是否全力完成。核对比赛 / 测试性质、标准距离和完整计时后，才用于比赛能力分析。</p></div><div id="healthCandidates"></div>
+        <div class="health-evaluation-hint" id="healthEvaluationHint" role="note"></div><div class="health-candidate-heading"><h3>可核对的历史跑步</h3><p>健康记录无法判断是否全力完成。核对比赛 / 测试性质、标准距离和完整计时后，才用于比赛能力分析。</p></div><div id="healthCandidates"></div>
         <details class="health-more"><summary>数据范围与分析限制</summary><div id="healthWarnings"></div><p>训练连续性、近期身体状态需要你确认。单次最高心率不会自动填为个人最大心率；设备 VO₂max 只作补充记录。</p></details>
       </section>
     </div>
@@ -234,7 +250,8 @@
   <script src="./health-import.js" defer></script>
   <script src="./health-panel.js" defer></script>
   <script src="./goal-overview.js" defer></script>
-  <script src="./event-preview.js" defer></script><script src="./app.js" defer></script>
+  <script src="./event-preview.js" defer></script>
+  <script src="./app.js" defer></script>
 
 </body>
 </html>
