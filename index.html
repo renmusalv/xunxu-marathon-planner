@@ -25,11 +25,43 @@
   <link rel="stylesheet" href="./duration-input.css" />
   <link rel="stylesheet" href="./mobile-layout.css" />
   <link rel="stylesheet" href="./mobile-schedule.css" />
+  <link rel="stylesheet" href="./dashboard.css" />
+  <link rel="stylesheet" href="./health-panel.css" />
 </head>
 <body>
   <main class="shell" id="workspaceShell" data-workspace-view="profile">
-    <header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true">∿</div><span>循序 <span style="font-weight:450;color:#89938b">/ ENDURANCE PLANNER</span></span></div><div class="top-meta"><i class="live-dot"></i>目标决定课表 · 实绩评估难度</div></header>
-    <section class="intro"><div><div class="eyebrow">MARATHON TRAINING BUILDER</div><h1>把比赛目标，拆解成每周训练。</h1><p>按目标生成课表，用真实成绩与个人资料，判断完成难度和适合当前能力的配速。</p></div><div class="basis-pill">目标课表 + 能力建议 · 独立档案</div></section>
+    <header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true">∿</div><span>循序 <span style="font-weight:450;color:#89938b">/ ENDURANCE PLANNER</span></span></div><button type="button" id="heroToggle" class="hero-toggle" aria-controls="raceHero" aria-expanded="true"><span data-hero-toggle-label>收起头图</span></button></header>
+    <section class="race-hero" id="raceHero" aria-label="半马备赛">
+      <img src="./assets/half-marathon-hero.jpg" alt="清晨林荫公路上结伴训练的长跑者" width="2172" height="724" fetchpriority="high" />
+      <div class="race-hero-copy"><span>YOUR NEXT HALF MARATHON</span><h1>为下一场，循序进阶。</h1><p>目标明确，每一步都有依据。</p></div>
+      <span class="hero-distance" aria-hidden="true">21.0975 <small>KM</small></span>
+    </section>
+    <section class="goal-overview" id="goalOverview" aria-labelledby="overviewTitle" data-status="loading" data-level="unknown">
+      <div class="overview-topline"><span id="overviewProfile">当前档案</span><button type="button" id="editGoalButton">修改目标 <span aria-hidden="true">↗</span></button></div>
+      <div class="overview-main">
+        <div class="overview-copy"><span class="section-kicker">下一场目标</span><h2 id="overviewTitle">目标完成适配度</h2><p class="overview-race"><strong id="overviewRaceTitle">半程马拉松</strong><span id="overviewTarget">1:45:00</span></p><p id="overviewRaceDate" class="overview-date">正在读取目标…</p><strong id="overviewVerdict" class="overview-verdict">待评估</strong></div>
+        <div class="overview-chart" id="overviewChart" role="img" aria-label="目标准备度待评估"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="overview-track" cx="60" cy="60" r="52"/><circle id="overviewRing" class="overview-ring" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/></svg><div><strong id="overviewScore">—</strong><span id="overviewScoreUnit">待评估</span></div></div>
+      </div>
+      <p class="overview-summary" id="overviewSummary">补充真实训练与近期成绩，了解目标和当前能力的距离。</p>
+      <div class="overview-evidence"><span id="overviewEvidence">成绩依据待补充</span><span id="overviewBaseline">训练基础待补充</span></div>
+      <div class="overview-actions"><button type="button" class="health-entry" id="openHealthButton"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.8 4.6a5.4 5.4 0 0 0-7.6 0L12 5.8l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6L12 21l8.8-8.8a5.4 5.4 0 0 0 0-7.6Z"/><path d="m5 12 4 .1 2-4 2 8 2-4h4"/></svg><span>导入健康数据</span></button><p>准备度规则评分<br>并非比赛成功概率</p></div>
+      <details id="goalDetails" class="goal-details"><summary><span>查看完整评估与建议配速</span><span class="details-arrow" aria-hidden="true">⌄</span></summary><div class="goal-details-body"><section class="risk-assessment" id="riskAssessment" aria-live="polite" hidden>
+          <div class="risk-heading"><div><div class="summary-label">GOAL FIT · PLANNING ESTIMATE</div><h3>目标完成适配度 <strong id="fitScore">—</strong><span>/100</span></h3></div><span id="riskBadge" class="risk-badge">风险待评估</span></div>
+          <div class="risk-track"><i id="fitBar"></i></div>
+          <p id="riskSummary" class="risk-summary"></p><p id="riskReasons" class="risk-summary"></p>
+          <p class="risk-legend">这是透明的准备度规则评分，不是完赛概率。成绩证据、身体状态和心率可靠性分别说明。</p><div class="risk-factors" id="riskFactors"></div>
+          <details class="risk-method"><summary>查看判断方法与研究依据</summary><div id="assessmentMethod"></div></details>
+        </section><section class="ability-panel" id="abilityPanel" hidden aria-label="当前能力与训练强度">
+          <div class="ability-heading"><div><div class="summary-label">BASED ON YOUR PERFORMANCE</div><h3>按当前能力建议的训练强度</h3></div><span class="evidence-badge" id="evidenceBadge">待确认</span></div>
+          <div class="ability-stats"><div><span id="equivalentLabel">当前半马等效</span><strong id="equivalentTime">—</strong><small id="equivalentRange"></small></div><div><span>目标配速</span><strong id="targetPace">—</strong><small id="goalGap"></small></div><div><span>心率参考依据</span><strong class="method-label" id="hrMethod">待补充</strong><small id="hrConfidence"></small></div></div>
+          <p class="evidence-copy" id="evidenceCopy"></p>
+          <div class="prescription-grid" id="prescriptionGrid"></div>
+          <p class="intensity-note" id="heartNotes"></p>
+          <div class="data-gaps" id="dataGaps"></div>
+          <details class="data-details"><summary>使用了哪些成绩与个人资料？</summary><div id="evidenceDetails"></div><div id="physiologyDetails"></div></details>
+        </section></div></details>
+    </section>
+    <div id="workspaceAnchor" aria-hidden="true" style="height:1px"></div>
     <nav class="workspace-tabs" id="workspaceTabs" role="tablist" aria-label="个人资料与课程安排">
       <button type="button" id="view-profile" role="tab" data-view="profile" aria-controls="plannerForm" aria-selected="true">个人资料</button>
       <button type="button" id="view-schedule" role="tab" data-view="schedule" aria-controls="planWorkspace" aria-selected="false" tabindex="-1">课程安排</button>
@@ -73,9 +105,10 @@
           </details>
         </div>
         <div id="panel-personal" role="tabpanel" aria-labelledby="tab-personal" hidden>
+          <button type="button" class="health-inline-entry" id="openHealthFromProfile"><span><strong>用健康记录补充训练基础</strong><small id="healthImportStatus">导入 Apple 健康文件，核对后自动填写</small></span><span aria-hidden="true">↗</span></button>
           <div class="section-intro"><span class="section-kicker">你的近期实际状态</span><h3>当前训练基础</h3><p>填写最近 3–4 周的真实训练，用于判断负荷和完成难度。不清楚的项目可留空。</p></div>
         <div class="field"><label for="weeklyKm">目前周跑量</label><div class="pace-input"><input id="weeklyKm" type="number" min="0" max="160" placeholder="近 4 周平均"/><span>km</span></div><small>填写最近 3–4 周的平均值，不含比赛周。</small></div>
-        <div class="split"><div class="field"><label for="days">目前每周跑步天数</label><select id="days"><option value="" selected>请选择</option><option value="3">3 天</option><option value="4">4 天</option><option value="5">5 天</option></select></div><div class="field"><label for="longRun">近 30 天最长跑</label><div class="pace-input"><input id="longRun" type="number" min="0" max="42" placeholder="如 14"/><span>km</span></div></div></div>
+        <div class="split"><div class="field"><label for="days">目前每周跑步天数</label><select id="days"><option value="" selected>请选择</option><option value="1">1 天</option><option value="2">2 天</option><option value="3">3 天</option><option value="4">4 天</option><option value="5">5 天</option><option value="6">6 天</option><option value="7">7 天</option></select></div><div class="field"><label for="longRun">近 30 天最长跑</label><div class="pace-input"><input id="longRun" type="number" min="0" max="42" placeholder="如 14"/><span>km</span></div></div></div>
         <p class="field-note" id="scheduleBasisHint">半马专项固定 4 跑 + 1 次力量。跑量、最长跑和目前频率用于难度评估。</p>
           <div class="field"><label for="recentConsistency">最近 4 周训练连续性</label><select id="recentConsistency"><option value="">请选择</option><option value="stable">稳定持续训练</option><option value="interrupted">有明显中断</option><option value="restarting">刚恢复训练</option></select></div>
           <div class="field"><label for="discomfort">近期身体状态</label><select id="discomfort"><option value="">请选择</option><option value="none">无明显不适</option><option value="pain">有持续疼痛 / 伤后恢复</option><option value="illness">近期生病 / 明显疲劳</option></select><small>存在不适时先恢复，再评估训练强度。</small></div>
@@ -89,7 +122,7 @@
           </details>
           <details class="personal-details" id="vo2Details"><summary>VO₂max 记录 <span id="vo2DetailsCount">选填</span></summary>
             <p class="optional-intro">仅作补充记录，不用于计算目标课表或适配度评分。</p>
-            <div class="split"><div class="field"><label for="vo2max">VO₂max（ml/kg/min）</label><input id="vo2max" type="number" min="15" max="90" step="0.1" placeholder="如 48" /></div><div class="field"><label for="vo2maxSource">VO₂max 来源</label><select id="vo2maxSource"><option value="watch">手表估算</option><option value="lab">实验室测量</option></select></div></div>
+            <div class="split"><div class="field"><label for="vo2max">VO₂max（ml/kg/min）</label><input id="vo2max" type="number" min="15" max="90" step="0.1" placeholder="如 48" /></div><div class="field"><label for="vo2maxSource">VO₂max 来源</label><select id="vo2maxSource"><option value="watch">手表估算</option><option value="lab">实验室测量</option><option value="unknown">测量方式待确认</option></select></div></div>
             <div class="field"><label for="vo2maxDate">测量日期</label><input id="vo2maxDate" type="date" /></div>
           </details>
           <div class="personal-summary" id="personalSummary">未填心率时，训练强度用体感与交谈测试作为参考。</div>
@@ -100,25 +133,11 @@
       </form>
       <section class="work" id="planWorkspace" aria-label="课程安排"><div class="summary"><div><div class="summary-label">下一场目标比赛</div><h2 id="summaryTitle">训练计划</h2><div class="summary-copy" id="summaryCopy">按目标安排每周课程</div></div><div class="time-block"><strong id="finishTime">—</strong><span>目标完赛时间</span></div></div>
         <div class="mobile-plan-status" id="mobilePlanStatus" role="status">完成难度待评估 · 可先查看目标课表</div>
-        <details class="plan-insights" id="planInsights" open><summary><span>能力评估与计划概览</span><span id="planInsightStatus">待补充资料</span></summary><div class="plan-insights-content">
+        <details class="plan-insights" id="planInsights" open><summary><span>计划概览与完成难度</span><span id="planInsightStatus">待补充资料</span></summary><div class="plan-insights-content">
         <div class="metrics"><div class="metric"><span>到比赛还有</span><strong id="weeksMetric">16 周</strong><em id="daysMetric">112 天</em></div><div class="metric"><span>计划峰值周</span><strong id="peakMetric">— km</strong></div><div class="metric"><span>最长训练跑</span><strong id="longMetric">— km</strong></div><div class="metric"><span>质量训练</span><strong id="qualityMetric">—</strong></div><div class="metric metric-completion"><span>计划打卡完成度</span><strong id="planCompletionMetric">—</strong><em id="planCompletionDetail">尚未开始</em><div class="completion-track" role="progressbar" aria-label="训练计划完成度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="planCompletionBar"></i></div></div></div>
         <div class="notice" id="notice"></div>
-        <section class="ability-panel" id="abilityPanel" hidden aria-label="当前能力与训练强度">
-          <div class="ability-heading"><div><div class="summary-label">BASED ON YOUR PERFORMANCE</div><h3>按当前能力建议的训练强度</h3></div><span class="evidence-badge" id="evidenceBadge">待确认</span></div>
-          <div class="ability-stats"><div><span id="equivalentLabel">当前半马等效</span><strong id="equivalentTime">—</strong><small id="equivalentRange"></small></div><div><span>目标配速</span><strong id="targetPace">—</strong><small id="goalGap"></small></div><div><span>心率参考依据</span><strong class="method-label" id="hrMethod">待补充</strong><small id="hrConfidence"></small></div></div>
-          <p class="evidence-copy" id="evidenceCopy"></p>
-          <div class="prescription-grid" id="prescriptionGrid"></div>
-          <p class="intensity-note" id="heartNotes"></p>
-          <div class="data-gaps" id="dataGaps"></div>
-          <details class="data-details"><summary>使用了哪些成绩与个人资料？</summary><div id="evidenceDetails"></div><div id="physiologyDetails"></div></details>
-        </section>
-        <section class="risk-assessment" id="riskAssessment" aria-live="polite" hidden>
-          <div class="risk-heading"><div><div class="summary-label">GOAL FIT · PLANNING ESTIMATE</div><h3>目标完成适配度 <strong id="fitScore">—</strong><span>/100</span></h3></div><span id="riskBadge" class="risk-badge">风险待评估</span></div>
-          <div class="risk-track"><i id="fitBar"></i></div>
-          <p id="riskSummary" class="risk-summary"></p><p id="riskReasons" class="risk-summary"></p>
-          <p class="risk-legend">这是透明的准备度规则评分，不是完赛概率。成绩证据、身体状态和心率可靠性分别说明。</p><div class="risk-factors" id="riskFactors"></div>
-          <details class="risk-method"><summary>查看判断方法与研究依据</summary><div id="assessmentMethod"></div></details>
-        </section>
+        
+        
         <section class="template-panel" id="templatePanel" hidden aria-label="目标课表与实际完成难度">
           <div class="template-heading"><div><div class="summary-label">TARGET PLAN · 7-WEEK STRUCTURE</div><h3 id="templateTitle">半马 1:45 目标课表</h3></div><span class="template-tag">按目标设定配速</span></div>
           <p id="templateCopy"></p>
@@ -139,6 +158,28 @@
     </div>
 
   </main>
+  <dialog class="health-dialog" id="healthDialog" aria-labelledby="healthDialogTitle">
+    <header class="health-dialog-head"><div><span class="section-kicker">HEALTH DATA</span><h2 id="healthDialogTitle">用真实记录，了解你的准备度</h2><p>当前档案：<strong id="healthOwner"></strong></p></div><button type="button" id="closeHealthDialog" class="icon-button" aria-label="关闭健康数据窗口">×</button></header>
+    <div class="health-dialog-content">
+      <div class="health-access-note"><strong>Apple 健康 · 文件导入</strong><p>当前网页版支持导入健康文件。iPhone「健康」和 Android Health Connect 的直接系统授权，需要原生 App。</p></div>
+      <div class="health-import-guide"><h3>如何取得健康文件</h3><ol><li>打开 iPhone「健康」→ 摘要 → 右上角头像。</li><li>选择「导出所有健康数据」，存储到「文件」。</li><li>回到这里选择导出的 ZIP，或解压后的 export.xml。</li></ol><a href="https://support.apple.com/zh-cn/guide/iphone/iph5ede58c3d/ios" target="_blank" rel="noreferrer">Apple 官方导出说明 ↗</a></div>
+      <button type="button" class="health-choose" id="healthChooseFile"><span aria-hidden="true">＋</span> 选择健康文件 <small>ZIP / XML</small></button><input type="file" id="healthFile" accept=".zip,.xml,application/zip,application/xml,text/xml" hidden />
+      <p class="health-privacy">只分析跑步训练、静息心率和 VO₂max。原始文件在当前浏览器中读取，不上传；不读取定位轨迹、医疗记录、睡眠等无关内容。</p>
+      <p class="health-status" id="healthStatus" role="status">选择文件后，先查看摘要再决定应用哪些数据。</p><progress id="healthReadProgress" aria-label="读取健康文件" hidden></progress>
+      <p id="healthError" class="health-error" role="alert" hidden></p>
+      <section id="healthReview" hidden aria-labelledby="healthReviewHeading">
+        <div class="health-review-heading"><span class="section-kicker">核对后用于当前档案</span><h3 id="healthReviewHeading" tabindex="-1">健康数据摘要</h3><p id="healthReviewPeriod"></p></div>
+        <div class="health-stats"><div><span>平均周跑量</span><strong id="healthStatDistance">—</strong></div><div><span>跑步频率</span><strong id="healthStatDays">—</strong></div><div><span>近 30 天最长跑</span><strong id="healthStatLong">—</strong></div></div>
+        <p id="healthFileSummary" class="health-muted"></p>
+        <div id="healthFieldChoices" class="health-field-choices"></div>
+        <div class="health-frequency"><label for="healthRunDays">确认平常每周跑步天数</label><select id="healthRunDays"><option value="">暂不更新</option><option value="1">1 天</option><option value="2">2 天</option><option value="3">3 天</option><option value="4">4 天</option><option value="5">5 天</option><option value="6">6 天</option><option value="7">7 天</option></select><small id="healthRunDaysHint"></small></div>
+        <label class="health-coverage"><input type="checkbox" id="healthCoverage"/><span>我确认上述 28 天的跑步记录完整<small>没有记录不等于没有训练。记录不完整时，取消周跑量与天数的更新，之后手动补充。</small></span></label>
+        <div class="health-apply-area"><p id="healthDataDestination" class="health-muted"></p><button type="button" class="generate" id="healthApplyButton">应用所选数据并生成课表</button></div>
+        <div class="health-candidate-heading"><h3>可核对的历史跑步</h3><p>健康记录无法判断是否全力完成。核对比赛 / 测试性质、标准距离和完整计时后，才用于比赛能力分析。</p></div><div id="healthCandidates"></div>
+        <details class="health-more"><summary>数据范围与分析限制</summary><div id="healthWarnings"></div><p>训练连续性、近期身体状态需要你确认。单次最高心率不会自动填为个人最大心率；设备 VO₂max 只作补充记录。</p></details>
+      </section>
+    </div>
+  </dialog>
   <dialog class="profile-dialog" id="profileDialog" aria-labelledby="profileDialogTitle"><form id="profileForm"><h2 id="profileDialogTitle">新建训练档案</h2><p>单独保存比赛设置、成绩截图、个人资料和训练打卡。</p><label for="profileName">档案名称</label><input id="profileName" type="text" maxlength="24" placeholder="例如：Jojo" required/><div class="profile-dialog-actions"><button type="button" id="cancelProfileButton" class="profile-cancel">取消</button><button type="submit" class="generate" id="createProfileSubmit">保存并切换</button></div></form></dialog>
   <dialog class="record-dialog" id="recordDialog" aria-labelledby="recordDialogTitle">
     <form id="recordForm" novalidate>
@@ -158,7 +199,7 @@
           </details>
           <div class="split"><div class="field"><label for="recordEffort">这次跑步的性质</label><select id="recordEffort" required><option value="">请确认</option><option value="race">正式比赛 / 全力竞赛</option><option value="time_trial">全力计时测试</option><option value="training">日常训练 / 非全力</option></select></div><div class="field"><label for="recordCourse">路线情况</label><select id="recordCourse"><option value="unknown">不确定</option><option value="road_flat">较平坦道路</option><option value="hilly">较多爬升</option><option value="trail">越野路线</option><option value="treadmill">跑步机</option></select></div></div>
           <label class="include-record"><input id="recordInclude" type="checkbox" checked /><span>纳入本档案的能力评估</span></label><p class="field-note">日常训练、移动时间、越野或明显爬升成绩仅留档，不用于推算公路全力比赛能力。</p>
-          <details id="rawTextDetails" class="data-details" hidden><summary>查看图片识别原文</summary><pre id="rawText"></pre></details>
+          <details id="rawTextDetails" class="data-details" hidden><summary>查看来源数据</summary><pre id="rawText"></pre></details>
           <p id="recordError" class="form-error" role="alert" hidden></p>
         </div>
       </div>
@@ -188,6 +229,9 @@
   <script src="./duration-input.js" defer></script>
   <script src="./mobile-schedule.js" defer></script>
   <script src="./mobile-layout.js" defer></script>
+  <script src="./health-import.js" defer></script>
+  <script src="./health-panel.js" defer></script>
+  <script src="./goal-overview.js" defer></script>
   <script src="./app.js" defer></script>
 
 </body>

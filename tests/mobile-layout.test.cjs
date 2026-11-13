@@ -32,17 +32,17 @@ function harness({mobile = true, reducedMotion = false} = {}) {
     matchMedia: query => query.includes('prefers-reduced-motion') ? {matches: reducedMotion} : media,
     requestAnimationFrame: fn => { frames.push(fn); return frames.length; }
   };
-  const shell = new Element('workspaceShell'), profile = new Element('plannerForm'), plan = new Element('planWorkspace'), tabs = new Element('workspaceTabs');
+  const shell = new Element('workspaceShell'), profile = new Element('plannerForm'), plan = new Element('planWorkspace'), tabs = new Element('workspaceTabs'), anchor = new Element('workspaceAnchor');
   const profileButton = new Element('view-profile'), scheduleButton = new Element('view-schedule');
   profileButton.dataset.view = 'profile'; scheduleButton.dataset.view = 'schedule';
-  tabs.children = [profileButton, scheduleButton]; shell.children = [tabs, profile, plan];
+  tabs.children = [profileButton, scheduleButton]; shell.children = [anchor, tabs, profile, plan];
   const insights = new Element('planInsights'), explanation = new Element('planExplanation'), courseButton = new Element('courseCheckin');
   plan.children = [insights, explanation, courseButton];
   let activations = 0;
   const controller = create({shell, profile, plan, tabs, onSchedule: () => activations++});
   function flush() { while (frames.length) frames.shift()(); }
   function setMobile(value) { media.matches = value; [...media.listeners].forEach(fn => fn({matches: value})); flush(); }
-  return {controller, shell, profile, plan, tabs, profileButton, scheduleButton, insights, explanation, courseButton, document, media, flush, setMobile, activations: () => activations};
+  return {controller, shell, profile, plan, tabs, anchor, profileButton, scheduleButton, insights, explanation, courseButton, document, media, flush, setMobile, activations: () => activations};
 }
 
 test('mobile workspace shows one panel and updates accessible tab state on click', () => {
@@ -57,7 +57,8 @@ test('mobile workspace shows one panel and updates accessible tab state on click
   assert.equal(h.profile.hidden, true); assert.equal(h.plan.hidden, false);
   assert.equal(h.profileButton.getAttribute('aria-selected'), 'false'); assert.equal(h.scheduleButton.getAttribute('aria-selected'), 'true');
   assert.equal(h.scheduleButton.tabIndex, 0); assert.equal(h.profileButton.tabIndex, -1);
-  assert.deepEqual(h.shell.scrollCalls.at(-1), {behavior: 'smooth', block: 'start'});
+  assert.deepEqual(h.anchor.scrollCalls.at(-1), {behavior: 'smooth', block: 'start'});
+  assert.equal(h.shell.scrollCalls.length, 0, 'Switching panels must not return through the hero and overview');
   assert.equal(h.tabs.scrollCalls.length, 0, 'Sticky tabs cannot anchor a return to the course header');
 });
 
@@ -69,7 +70,7 @@ test('mobile workspace keyboard navigation moves selection and focus without tra
   h.profileButton.emit('keydown', {key: 'End'}); assert.equal(h.controller.getView(), 'schedule');
   h.scheduleButton.emit('keydown', {key: 'Home'}); assert.equal(h.document.activeElement, h.profileButton);
   assert.equal(h.profileButton.emit('keydown', {key: 'Tab'}).defaultPrevented, false);
-  assert.equal(h.controller.getView(), 'profile'); assert.equal(h.shell.scrollCalls.length, 0);
+  assert.equal(h.controller.getView(), 'profile'); assert.equal(h.anchor.scrollCalls.length, 0); assert.equal(h.shell.scrollCalls.length, 0);
 });
 
 test('desktop restores both panels and expanded analysis; returning mobile keeps focused course visible', () => {
@@ -108,10 +109,22 @@ test('schedule activation waits for visibility frame and scroll respects reduced
   assert.equal(h.plan.hidden, false); assert.equal(h.activations(), 0);
   h.flush(); assert.equal(h.activations(), 1);
   assert.equal(h.document.activeElement, h.scheduleButton);
-  assert.deepEqual(h.shell.scrollCalls.at(-1), {behavior: 'auto', block: 'start'});
+  assert.deepEqual(h.anchor.scrollCalls.at(-1), {behavior: 'auto', block: 'start'});
+  assert.equal(h.shell.scrollCalls.length, 0);
   assert.equal(h.tabs.scrollCalls.length, 0);
   h.controller.select('profile'); h.flush(); assert.equal(h.activations(), 1);
   h.controller.select('unexpected'); assert.equal(h.controller.getView(), 'profile');
+});
+
+test('initial load preserves the top overview; both requested panel switches use the ordinary-flow anchor', () => {
+  const h = harness(); h.flush();
+  assert.equal(h.anchor.scrollCalls.length, 0, 'Opening the page must preserve the hero and goal overview');
+  h.controller.select('schedule', {scroll: true}); h.flush();
+  h.controller.select('profile', {scroll: true}); h.flush();
+  assert.equal(h.anchor.scrollCalls.length, 2);
+  assert.equal(h.shell.scrollCalls.length, 0); assert.equal(h.tabs.scrollCalls.length, 0);
+  h.setMobile(false); h.controller.select('schedule', {scroll: true}); h.flush();
+  assert.equal(h.anchor.scrollCalls.length, 2, 'Desktop retains its existing layout and does not use mobile panel scrolling');
 });
 
 test('destroy removes controls and responsive listeners, cancels callbacks, and restores visibility', () => {

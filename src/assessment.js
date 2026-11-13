@@ -235,10 +235,10 @@
     const value = number(personal.vo2max, 10, 100);
     if (value === null) return { value: null, label: '未填写', note: 'VO₂max 可作为补充信息；不会因未填而扣适配度。', ageDays: null, source: null };
     const date = dayValue(personal.vo2maxDate), age = date === null ? null : Math.floor((today - date) / DAY);
-    const lab = personal.vo2maxSource === 'lab';
+    const lab = personal.vo2maxSource === 'lab', unknown = personal.vo2maxSource === 'unknown';
     return {
-      value, source: lab ? 'lab' : 'watch', label: lab ? '实验室测量' : '设备估算', date: personal.vo2maxDate || null, ageDays: age,
-      note: (lab ? '实验室 VO₂max 反映有氧能力之一。' : '手表 VO₂max 是算法估算，会受到设备与测量条件影响。') + '不将它当作比赛表现或完赛概率，不单独加减目标适配度。' + (age !== null && age < 0 ? '记录日期在未来，请核对。' : age !== null && age > 180 ? '这项记录已超过 180 天。' : !date ? '可补充测量日期以判断新鲜度。' : '')
+      value, source: unknown ? 'unknown' : lab ? 'lab' : 'watch', label: unknown ? '测量方式待确认' : lab ? '实验室测量' : '设备估算', date: personal.vo2maxDate || null, ageDays: age,
+      note: (unknown ? '健康导出的 VO₂max 未明确测量方式，可在个人资料中核对来源。' : lab ? '实验室 VO₂max 反映有氧能力之一。' : '手表 VO₂max 是算法估算，会受到设备与测量条件影响。') + '不将它当作比赛表现或完赛概率，不单独加减目标适配度。' + (age !== null && age < 0 ? '记录日期在未来，请核对。' : age !== null && age > 180 ? '这项记录已超过 180 天。' : !date ? '可补充测量日期以判断新鲜度。' : '')
     };
   }
 

@@ -36,7 +36,7 @@ function harness(){
  const source=fs.readFileSync(path.join(__dirname,'../src/app.js'),'utf8'),marker='// Boot and explicit UI events.';assert.ok(source.includes(marker));
  vm.runInContext(source.slice(0,source.indexOf(marker))+`
  cloudReady=true;
- globalThis.__appTest={render,savePlanHistory,readAdherence,validatePersonal,saveProfileForm,loadProfileForm,updateCloudStatus,hasUnsavedChanges,personalValues,revealProfileField,applyRecognizedFields,updateRecordHeartSummary,recognitionTimingMessage,
+ globalThis.__appTest={render,savePlanHistory,readAdherence,validatePersonal,saveProfileForm,loadProfileForm,updateCloudStatus,hasUnsavedChanges,personalValues,revealProfileField,applyRecognizedFields,updateRecordHeartSummary,recognitionTimingMessage,applyHealthPatch,healthContext,
  setState(state){if('profileId'in state)activeProfileId=state.profileId;if('checkinKey'in state)activeCheckinKey=state.checkinKey;if('startDate'in state)activePlanStartDate=state.startDate;if('records'in state)currentRecords=state.records;if('draft'in state)recordDraft=state.draft;}};
  `,context,{filename:'src/app.js'});
  element('raceDate').value=defaults.raceDate;
@@ -376,4 +376,32 @@ test('absent or unsupported timing metadata resets to unknown and asks for confi
     assert.equal(h.element('recordDurationType').value,'unknown');assert.equal(filled.includes('计时类型'),false);
     assert.match(h.api.recognitionTimingMessage(h.element('recordDurationType').value),/请确认这是完整计时还是移动时间/);
   }
+});
+
+
+test('reviewed health summary updates only its profile and preserves goal course paces',async()=>{
+ const h=harness();h.api.render();const before=targetBlocks(h);
+ h.data('other').form={weeklyKm:'61',restingHr:'67'};
+ await h.api.applyHealthPatch({weeklyKm:'33.5',longRun:'16',days:'2',restingHr:'52',vo2max:'48',vo2maxSource:'unknown',vo2maxDate:'2026-11-01'},h.api.healthContext());
+ assert.equal(h.data('default').form.weeklyKm,'33.5');assert.equal(h.element('weeklyKm').value,'33.5');
+ assert.equal(h.data('default').form.days,'2');assert.equal(h.element('vo2maxSource').value,'unknown');
+ assert.equal(h.data('other').form.weeklyKm,'61');assert.equal(h.data('other').form.restingHr,'67');
+ assert.equal(h.data('default').form.halfGoalTime,'01:45:00');assert.deepEqual(targetBlocks(h),before);
+ assert.equal(h.element('maxHr').value,'');assert.equal(h.element('recentConsistency').value,'');
+ assert.match(h.element('riskFactors').innerHTML,/2 天\/周/);
+ assert.equal(h.element('fitScore').textContent,'—','training totals alone cannot create a race ability score');
+});
+
+test('health summary cannot write after its target profile has changed',async()=>{
+ const h=harness(),context=h.api.healthContext();h.api.setState({profileId:'other'});
+ await assert.rejects(h.api.applyHealthPatch({weeklyKm:'37'},context),/档案已变化/);
+ assert.equal(h.writes.length,0);assert.equal(h.data('other').form.weeklyKm,undefined);
+});
+
+test('an acknowledged old-profile health save cannot overwrite the new profile form',async()=>{
+ const h=harness();let release;const commit=h.client.commit.bind(h.client);
+ h.client.commit=(...args)=>new Promise(resolve=>{release=()=>commit(...args).then(resolve)});
+ const pending=h.api.applyHealthPatch({weeklyKm:'37'},h.api.healthContext());
+ h.api.setState({profileId:'other'});h.data('other').form.weeklyKm='61';h.element('weeklyKm').value='61';release();await pending;
+ assert.equal(h.data('default').form.weeklyKm,'37');assert.equal(h.data('other').form.weeklyKm,'61');assert.equal(h.element('weeklyKm').value,'61');
 });
