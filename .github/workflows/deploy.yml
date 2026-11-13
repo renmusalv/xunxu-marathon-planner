@@ -34,6 +34,8 @@ jobs:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
           EMAIL_LOGIN_ENABLED: ${{ vars.EMAIL_LOGIN_ENABLED }}
+          SHARED_LOGIN_EMAIL: ${{ vars.SHARED_LOGIN_EMAIL }}
+          PASSWORD_LOGIN_ENABLED: ${{ vars.PASSWORD_LOGIN_ENABLED }}
         run: npm run build
       - name: Configure Pages
         uses: actions/configure-pages@v5
