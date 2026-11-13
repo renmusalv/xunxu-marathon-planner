@@ -22,11 +22,18 @@
     @media(max-width:560px){.metrics{grid-template-columns:1fr 1fr}.metric:nth-child(2n){border-right:0}.metric{border-bottom:1px solid var(--line)}.metric:last-child{border-bottom:0}}
   </style>
   <link rel="stylesheet" href="./enhancements.css" />
+  <link rel="stylesheet" href="./duration-input.css" />
+  <link rel="stylesheet" href="./mobile-layout.css" />
+  <link rel="stylesheet" href="./mobile-schedule.css" />
 </head>
 <body>
-  <main class="shell">
+  <main class="shell" id="workspaceShell" data-workspace-view="profile">
     <header class="topbar"><div class="brand"><div class="brand-mark" aria-hidden="true">∿</div><span>循序 <span style="font-weight:450;color:#89938b">/ ENDURANCE PLANNER</span></span></div><div class="top-meta"><i class="live-dot"></i>目标决定课表 · 实绩评估难度</div></header>
     <section class="intro"><div><div class="eyebrow">MARATHON TRAINING BUILDER</div><h1>把比赛目标，拆解成每周训练。</h1><p>按目标生成课表，用真实成绩与个人资料，判断完成难度和适合当前能力的配速。</p></div><div class="basis-pill">目标课表 + 能力建议 · 独立档案</div></section>
+    <nav class="workspace-tabs" id="workspaceTabs" role="tablist" aria-label="个人资料与课程安排">
+      <button type="button" id="view-profile" role="tab" data-view="profile" aria-controls="plannerForm" aria-selected="true">个人资料</button>
+      <button type="button" id="view-schedule" role="tab" data-view="schedule" aria-controls="planWorkspace" aria-selected="false" tabindex="-1">课程安排</button>
+    </nav>
     <section class="cloud-banner" id="cloudBanner" data-state="guest" aria-label="档案保存状态">
       <div class="cloud-status-copy"><span class="cloud-symbol" aria-hidden="true">☁</span><div><strong id="cloudState" role="status">公开试用 · 无需 ChatGPT 账号</strong><small id="cloudDetail"><span id="cloudIdentity">试用资料仅在当前页面</span><span id="cloudStorageHint"> · 登录邮箱后可保存到云端</span></small></div></div>
       <div class="cloud-actions"><button type="button" id="cloudRetry" hidden>重试保存</button><button type="button" id="cloudReload" hidden>重新读取云端</button><button type="button" id="cloudSignIn">邮箱登录保存</button><button type="button" id="cloudSignOut" hidden>退出账号</button></div>
@@ -36,21 +43,22 @@
       <form id="plannerForm" class="panel" aria-label="计划设置" novalidate><div class="panel-head"><h2>你的训练档案</h2><span class="step">01 — SETUP</span></div>
         <div class="profile-field"><label for="profileSelect">当前训练档案</label><div class="profile-row"><select id="profileSelect" aria-label="切换训练档案"></select><button id="addProfileButton" type="button" class="profile-add">＋ 新档案</button></div><small id="profileStorageHint">各试用档案相互独立；登录邮箱后可另存到云端。</small></div>
         <div class="setup-tabs" role="tablist" aria-label="档案资料分类">
-          <button type="button" role="tab" id="tab-race" aria-controls="panel-race" aria-selected="true" data-tab="race">比赛目标</button>
-          <button type="button" role="tab" id="tab-records" aria-controls="panel-records" aria-selected="false" tabindex="-1" data-tab="records">成绩资料 <span id="recordCount">0</span></button>
-          <button type="button" role="tab" id="tab-personal" aria-controls="panel-personal" aria-selected="false" tabindex="-1" data-tab="personal">训练基础</button>
+          <button type="button" role="tab" id="tab-race" aria-controls="panel-race" aria-selected="true" data-tab="race">下场比赛</button>
+          <button type="button" role="tab" id="tab-records" aria-controls="panel-records" aria-selected="false" tabindex="-1" data-tab="records">历史成绩 <span id="recordCount">0</span></button>
+          <button type="button" role="tab" id="tab-personal" aria-controls="panel-personal" aria-selected="false" tabindex="-1" data-tab="personal">当前基础</button>
         </div>
         <div id="panel-race" role="tabpanel" aria-labelledby="tab-race">
-        <div class="field"><label for="distance">比赛距离</label><select id="distance"><option value="42.195">全程马拉松 · 42.195 km</option><option value="21.0975" selected>半程马拉松 · 21.0975 km</option></select></div>
-        <div class="field"><label for="raceDate">比赛日期</label><input id="raceDate" type="text" inputmode="text" autocomplete="off" placeholder="YYYY-MM-DD" aria-describedby="raceDateHelp" required/><small id="raceDateHelp">格式 YYYY-MM-DD，例如 2026-12-27。</small></div>
-        <div class="field" id="halfGoalField" hidden><label for="halfGoalTime">半马目标完赛时间</label><input id="halfGoalTime" type="text" inputmode="numeric" value="01:45:00" placeholder="01:45:00" aria-describedby="halfGoalHelp" required/><small id="halfGoalHelp">格式 HH:MM:SS。1:45、1:50 各用对应参考课表；中间目标逐课推算。</small></div>
+        <div class="section-intro next-race-intro"><span class="section-kicker">面向下一场</span><h3>下一场目标比赛</h3><p>填写你准备参加的比赛和希望达到的目标。</p></div>
+        <div class="field"><label for="distance">下一场比赛距离</label><select id="distance"><option value="42.195">全程马拉松 · 42.195 km</option><option value="21.0975" selected>半程马拉松 · 21.0975 km</option></select></div>
+        <div class="field"><label for="raceDate">下一场比赛日期</label><input id="raceDate" type="date" autocomplete="off" aria-describedby="raceDateHelp" required/><small id="raceDateHelp">选择未来的比赛日，课表会倒排到这一天。</small></div>
+        <div class="field" id="halfGoalField" hidden><label for="halfGoalTime">这场半马的目标用时</label><input id="halfGoalTime" type="text" inputmode="text" data-duration value="01:45:00" placeholder="01:45:00" aria-describedby="halfGoalHelp" required/><small id="halfGoalHelp">分别填写时、分、秒。例如 1 时 50 分 00 秒。</small></div>
         <div class="split" id="paceFields"><div class="field"><label for="paceMin">目标配速</label><div class="pace-input"><input id="paceMin" type="number" min="3" max="12" value="5" aria-label="配速分钟"/><span>分</span></div></div><div class="field"><label for="paceSec">　</label><div class="pace-input"><input id="paceSec" type="number" min="0" max="59" value="35" aria-label="配速秒"/><span>秒/km</span></div></div></div>
         <p class="setup-guide">设定目标即可查看课表。补充实绩和训练基础，再判断适合当前能力的执行强度。</p>
         <button type="button" class="record-nudge" id="openRecords"><span class="nudge-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m-4 4 4-4 4 4M5 15v5h14v-5"/></svg></span><span><strong>用真实成绩判断完成难度</strong><small id="recordNudgeText">上传 10 km / 半马截图，或手动添加成绩</small></span><span>→</span></button>
         <button type="button" class="training-nudge" id="openTraining">补充训练基础 <span>判断跑量与完成难度 →</span></button>
         </div>
         <div id="panel-records" role="tabpanel" aria-labelledby="tab-records" hidden>
-          <div class="section-intro"><h3>让成绩成为能力判断依据</h3><p>支持 10 km、半马与全马。多条成绩综合判断难度与建议配速，近期、同距离记录优先。目标课表保持由目标决定。</p></div>
+          <div class="section-intro"><span class="section-kicker">回顾已完成的跑步</span><h3>历史比赛与测试成绩</h3><p>上传已经完成的 10 km、半马或全马成绩，用于判断当前能力和完成难度。</p></div>
           <div class="upload-zone" id="uploadZone">
             <div class="upload-symbol" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m-4 4 4-4 4 4M5 15v5h14v-5"/></svg></div><strong>上传跑步成绩截图</strong><span>中英文识别 · 距离 / 用时 / 日期 / 平均与最高心率</span>
             <button type="button" id="uploadButton" class="upload-button">选择图片</button><small>或拖放图片至此 · JPG / PNG / WebP · 最大 12 MB</small>
@@ -61,11 +69,11 @@
           <div class="records-heading"><h4>本档案成绩</h4><span id="recordsCaption">0 条</span></div>
           <div id="recordList" class="record-list"></div>
           <details class="legacy-entry" id="legacyEntry" hidden><summary>历史手填成绩</summary><p>保留此档案原有数据，可在这里修改；新增成绩请使用上方统一入口。相同记录只计一次。</p>
-        <div class="field"><label for="benchmarkDistance">近期比赛或全力测试成绩</label><div class="split"><select id="benchmarkDistance" aria-label="最好成绩项目" required><option value="" selected>选择项目</option><option value="10">10 公里</option><option value="21.0975">半程马拉松</option><option value="42.195">全程马拉松</option></select><input id="benchmarkTime" type="text" inputmode="numeric" placeholder="如 00:49:30" aria-label="最好成绩时间" required/></div><small id="benchmarkHelp">半马计划请填 10 公里或半马成绩；格式 HH:MM:SS。</small></div><div class="field"><label for="benchmarkDate">成绩日期</label><input id="benchmarkDate" type="text" autocomplete="off" placeholder="YYYY-MM-DD" aria-describedby="benchmarkDateHelp" required/><small id="benchmarkDateHelp">格式 YYYY-MM-DD，例如 2026-10-08；需在过去 365 天内。</small></div>
+        <div class="field"><label for="benchmarkDistance">近期比赛或全力测试成绩</label><div class="split"><select id="benchmarkDistance" aria-label="最好成绩项目" required><option value="" selected>选择项目</option><option value="10">10 公里</option><option value="21.0975">半程马拉松</option><option value="42.195">全程马拉松</option></select><input id="benchmarkTime" type="text" inputmode="text" data-duration placeholder="如 00:49:30" aria-label="最好成绩时间" required/></div><small id="benchmarkHelp">填写已完成的 10 公里或半马成绩，时、分、秒分别输入。</small></div><div class="field"><label for="benchmarkDate">已完成比赛 / 测试日期</label><input id="benchmarkDate" type="date" autocomplete="off" placeholder="YYYY-MM-DD" aria-describedby="benchmarkDateHelp" required/><small id="benchmarkDateHelp">填写这条历史成绩发生的日期，需在过去 365 天内。</small></div>
           </details>
         </div>
         <div id="panel-personal" role="tabpanel" aria-labelledby="tab-personal" hidden>
-          <div class="section-intro"><h3>只填会影响判断的基础</h3><p>这 5 项帮助判断训练负荷和完成难度；半马目标课表仍由目标决定。填写真实近况，不清楚可留空。</p></div>
+          <div class="section-intro"><span class="section-kicker">你的近期实际状态</span><h3>当前训练基础</h3><p>填写最近 3–4 周的真实训练，用于判断负荷和完成难度。不清楚的项目可留空。</p></div>
         <div class="field"><label for="weeklyKm">目前周跑量</label><div class="pace-input"><input id="weeklyKm" type="number" min="0" max="160" placeholder="近 4 周平均"/><span>km</span></div><small>填写最近 3–4 周的平均值，不含比赛周。</small></div>
         <div class="split"><div class="field"><label for="days">目前每周跑步天数</label><select id="days"><option value="" selected>请选择</option><option value="3">3 天</option><option value="4">4 天</option><option value="5">5 天</option></select></div><div class="field"><label for="longRun">近 30 天最长跑</label><div class="pace-input"><input id="longRun" type="number" min="0" max="42" placeholder="如 14"/><span>km</span></div></div></div>
         <p class="field-note" id="scheduleBasisHint">半马专项固定 4 跑 + 1 次力量。跑量、最长跑和目前频率用于难度评估。</p>
@@ -88,9 +96,11 @@
         </div>
         <p id="storageStatus" class="storage-status" role="status" hidden></p>
         <div class="hintline"><strong id="goalTimeHint">目标配速与完赛时间会自动换算。</strong>轻松跑以能完整交谈的体感为准。</div>
-        <button class="generate" id="generate" type="submit">生成训练计划 <span aria-hidden="true">↗</span></button><p id="generationStatus" class="fineprint" role="status">设定目标即可查看课表；补充成绩后显示个人难度与建议。</p><p class="fineprint">试用资料只在当前页面暂存，刷新或关闭后会丢失。邮箱登录后，资料修改自动保存到云端；浏览器只保留登录凭据，不保存训练资料。</p><p class="fineprint">计划是训练参考，不替代教练或医疗建议。若持续疼痛、胸闷、眩晕或不适，请停止训练并寻求专业评估。</p>
+        <div class="profile-actions"><button class="generate" id="generate" type="submit">生成并查看课程安排 <span aria-hidden="true">↗</span></button><p id="generationStatus" class="fineprint" role="status">设定目标即可查看课表；补充成绩后显示个人难度与建议。</p></div><details class="profile-help"><summary>资料保存与使用说明</summary><p class="fineprint">试用资料只在当前页面暂存，刷新或关闭后会丢失。邮箱登录后，资料修改自动保存到云端；浏览器只保留登录凭据，不保存训练资料。</p><p class="fineprint">计划是训练参考，不替代教练或医疗建议。若持续疼痛、胸闷、眩晕或不适，请停止训练并寻求专业评估。</p></details>
       </form>
-      <section class="work" aria-live="polite"><div class="summary"><div><div class="summary-label">YOUR RACE PLAN</div><h2 id="summaryTitle">16 周马拉松训练周期</h2><div class="summary-copy" id="summaryCopy">建立耐力 → 提升专项能力 → 逐步减量 · 每周保留恢复空间</div></div><div class="time-block"><strong id="finishTime">3:55:00</strong><span>目标完赛时间</span></div></div>
+      <section class="work" id="planWorkspace" aria-label="课程安排"><div class="summary"><div><div class="summary-label">下一场目标比赛</div><h2 id="summaryTitle">训练计划</h2><div class="summary-copy" id="summaryCopy">按目标安排每周课程</div></div><div class="time-block"><strong id="finishTime">—</strong><span>目标完赛时间</span></div></div>
+        <div class="mobile-plan-status" id="mobilePlanStatus" role="status">完成难度待评估 · 可先查看目标课表</div>
+        <details class="plan-insights" id="planInsights" open><summary><span>能力评估与计划概览</span><span id="planInsightStatus">待补充资料</span></summary><div class="plan-insights-content">
         <div class="metrics"><div class="metric"><span>到比赛还有</span><strong id="weeksMetric">16 周</strong><em id="daysMetric">112 天</em></div><div class="metric"><span>计划峰值周</span><strong id="peakMetric">— km</strong></div><div class="metric"><span>最长训练跑</span><strong id="longMetric">— km</strong></div><div class="metric"><span>质量训练</span><strong id="qualityMetric">—</strong></div><div class="metric metric-completion"><span>计划打卡完成度</span><strong id="planCompletionMetric">—</strong><em id="planCompletionDetail">尚未开始</em><div class="completion-track" role="progressbar" aria-label="训练计划完成度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="planCompletionBar"></i></div></div></div>
         <div class="notice" id="notice"></div>
         <section class="ability-panel" id="abilityPanel" hidden aria-label="当前能力与训练强度">
@@ -115,11 +125,16 @@
           <div class="plan-difficulty"><div><span>实际完成难度预测</span><strong id="planDifficultyLabel">资料不足</strong></div><p id="planDifficultyReason"></p></div>
           <details class="template-details"><summary>查看课表逻辑、日期安排与难度判断规则</summary><div id="templateNotes"></div><p id="difficultyMethod"></p></details>
         </section>
+        </div></details>
+        <div class="course-schedule" id="courseSchedule">
         <div class="phase-row" id="phaseRow"></div>
         <div class="schedule-head"><h3>逐周训练安排</h3><span id="progressSummary">计划完成度按应完成的跑步与力量训练统计 · 打卡保存于云端</span></div>
         <div class="week-list" id="weekList"></div>
+        </div>
+        <details class="plan-explanation" id="planExplanation" open><summary>课表结构与来源</summary>
         <div class="method"><div class="method-card"><h4>目标课表与个人建议分别展示</h4><p>课表主配速随目标时间变化。半马 1:45、1:50 使用各自参考图的七周专项结构；个人成绩、心率与训练基础用于旁注建议和难度判断。训练卡同时保留目标要求与当前能力建议，方便选择适合自己的执行强度。</p></div><div class="method-card"><h4>专项检验与赛前减量</h4><p>半马参考图在第 4 周安排 16K 专项自测，第 6、7 周逐步减量。完成自测可提供专项准备的线索，不能保证比赛达标。周期不足时只展示剩余周次，不补课；时间充裕时另列衔接期。</p></div></div>
         <footer class="source">课表来源：用户提供的《半马145冲刺课表》和《半马150冲刺课表》。1:45、1:50 保留各图的课程、时长、距离和配速；两者之间逐课插值，范围外从最近参考图按目标均速差推算。推算课表仅供规划参考。个人成绩与训练基础用于能力建议和难度判断，适配度不是成功概率。判断依据可在上方展开查看。</footer>
+        </details>
       </section>
     </div>
 
@@ -134,8 +149,8 @@
           <div class="recognition-status" id="recognitionStatus" role="status"><span id="recognitionMessage">请填写并核对数据</span><progress id="ocrProgress" max="100" value="0" hidden></progress></div>
           <p id="recognitionFields" class="recognition-fields" hidden></p>
           <p id="recognitionWarnings" class="review-warning" hidden></p>
-          <div class="split"><div class="field"><label for="recordDistance">成绩距离（km）</label><select id="recordDistance" required><option value="">请选择</option><option value="10">10 公里</option><option value="21.0975">半马 · 21.0975 km</option><option value="42.195">全马 · 42.195 km</option></select></div><div class="field"><label for="recordDate">成绩日期</label><input id="recordDate" type="date" required /></div></div>
-          <div class="split"><div class="field"><label for="recordTime">实际用时</label><input id="recordTime" type="text" placeholder="00:50:00" inputmode="numeric" required /><small>HH:MM:SS</small></div><div class="field"><label for="recordDurationType">用时类型</label><select id="recordDurationType"><option value="elapsed">总用时 / 官方净计时</option><option value="moving">移动时间</option><option value="unknown">不确定</option></select></div></div>
+          <div class="split"><div class="field"><label for="recordDistance">成绩距离（km）</label><select id="recordDistance" required><option value="">请选择</option><option value="10">10 公里</option><option value="21.0975">半马 · 21.0975 km</option><option value="42.195">全马 · 42.195 km</option></select></div><div class="field"><label for="recordDate">已完成比赛 / 测试日期</label><input id="recordDate" type="date" required /></div></div>
+          <div class="split"><div class="field"><label for="recordTime">实际完成用时</label><input id="recordTime" type="text" data-duration placeholder="00:50:00" inputmode="text" required /><small>分别填写时、分、秒</small></div><div class="field"><label for="recordDurationType">用时类型</label><select id="recordDurationType"><option value="elapsed">总用时 / 官方净计时</option><option value="moving">移动时间</option><option value="unknown">不确定</option></select></div></div>
           <div class="record-derived" id="recordDerived">配速会根据距离与用时自动计算</div>
           <details class="record-heart-details" id="recordHeartDetails"><summary>本次心率 <span id="recordHeartSummary">选填</span></summary>
             <div class="split"><div class="field"><label for="recordAverageHr">平均心率（bpm）</label><input id="recordAverageHr" type="number" min="50" max="230" placeholder="未识别可留空" /></div><div class="field"><label for="recordPeakHr">本次最高心率（bpm）</label><input id="recordPeakHr" type="number" min="50" max="240" placeholder="未识别可留空" /></div></div>
@@ -170,6 +185,9 @@
   <script src="./profile-store.js" defer></script>
   <script src="./guest-store.js" defer></script>
   <script src="./ocr.js" defer></script>
+  <script src="./duration-input.js" defer></script>
+  <script src="./mobile-schedule.js" defer></script>
+  <script src="./mobile-layout.js" defer></script>
   <script src="./app.js" defer></script>
 
 </body>

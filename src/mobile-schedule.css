@@ -1,0 +1,57 @@
+.mobile-schedule-controls { display: none; }
+.mobile-schedule-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+@media (max-width: 900px) {
+  .mobile-schedule-controls:not([hidden]) { display: block; margin: 0 14px 12px; padding: 14px 12px 6px; border: 1px solid #dce5d2; border-radius: 15px; background: #fbfcf7; }
+  .mobile-schedule-controls[hidden] { display: none !important; }
+  .mobile-week-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px; gap: 8px; align-items: end; }
+  .mobile-week-arrow { height: 44px; border: 1px solid #d7e2ca; border-radius: 10px; background: #f0f5e7; color: var(--ink); font: inherit; font-size: 26px; line-height: 1; }
+  .mobile-week-arrow:disabled, .mobile-day-arrow:disabled { opacity: .32; cursor: default; }
+  .mobile-week-select { display: grid; gap: 4px; min-width: 0; }
+  .mobile-week-select > span { font-size: 11px; color: #76876a; font-weight: 650; }
+  .mobile-week-select select { width: 100%; min-width: 0; height: 44px; border: 1px solid #d7e2ca; border-radius: 10px; padding: 0 8px; font: inherit; font-size: 16px; color: var(--ink); background: #fffefa; text-overflow: ellipsis; }
+  .mobile-week-summary { color: #718365; font-size: 11px; line-height: 1.7; margin: 10px 0 12px; overflow-wrap: anywhere; }
+  .mobile-day-tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .mobile-day-tab { display: flex; position: relative; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 58px; min-width: 0; padding: 7px 0; background: transparent; color: #708168; border: 1px solid transparent; border-radius: 10px; font: inherit; }
+  .mobile-day-name { font-size: 11px; }
+  .mobile-day-date { font-size: 17px; font-weight: 700; line-height: 1; }
+  .mobile-day-tab.is-today::after { content: ''; width: 4px; height: 4px; border-radius: 50%; position: absolute; bottom: 4px; background: #7c9a4f; }
+  .mobile-day-tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: #fffefa; box-shadow: 0 3px 8px #203d2520; }
+  .mobile-day-tab[aria-selected="true"].is-today::after { background: #d5e9af; }
+  .mobile-day-row { display: flex; gap: 5px; align-items: center; justify-content: space-between; margin-top: 4px; }
+  .mobile-day-arrow { min-height: 42px; border: 0; background: transparent; color: #567346; padding: 5px 0; font: inherit; font-size: 12px; font-weight: 650; white-space: nowrap; }
+  .mobile-swipe-hint { font-size: 10px; color: #87937c; text-align: center; }
+  #weekList.is-mobile-schedule { display: block; padding: 0 14px 16px; min-width: 0; }
+  #weekList.is-mobile-schedule > .week[hidden] { display: none !important; }
+  #weekList.is-mobile-schedule > .week:not([hidden]) { display: block; overflow: hidden; border: 0; border-radius: 0; }
+  #weekList.is-mobile-schedule .week-top { display: none; }
+  #weekList.is-mobile-schedule .day-grid { display: flex; grid-template-columns: none; gap: 12px; align-items: flex-start; overflow-x: auto; overflow-y: hidden; min-width: 0; padding: 0; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; touch-action: pan-x pan-y; border-radius: 13px; }
+  #weekList.is-mobile-schedule .day-grid::-webkit-scrollbar { display: none; }
+  #weekList.is-mobile-schedule .day-grid > .day { display: flex; flex-direction: column; flex: 0 0 100%; width: 100%; max-width: 100%; min-width: 0; min-height: 0; margin: 0; padding: 18px; box-sizing: border-box; border-radius: 13px; scroll-snap-align: start; scroll-snap-stop: always; }
+  #weekList.is-mobile-schedule .day .dow { font-size: 12px; line-height: 1.6; margin-bottom: 9px; }
+  #weekList.is-mobile-schedule .day .prescription-label { font-size: 11px; margin: 0 0 5px; }
+  #weekList.is-mobile-schedule .day .title { font-size: 19px; line-height: 1.4; margin: 0; }
+  #weekList.is-mobile-schedule .day .km { font-size: 26px; line-height: 1.3; margin: 8px 0 3px; }
+  #weekList.is-mobile-schedule .day .pace { font-size: 15px; line-height: 1.8; margin-top: 7px; }
+  #weekList.is-mobile-schedule .day.rest { background: #f5f3ec; }
+  #weekList.is-mobile-schedule .day.rest .pace { display: block; font-size: 13px; color: #8b8275; margin-top: 9px; }
+  #weekList.is-mobile-schedule .day.rest .title { font-size: 20px; }
+  #weekList.is-mobile-schedule .day .checkin { margin-top: 15px; min-height: 46px; font-size: 14px; }
+  #weekList.is-mobile-schedule .day .session-advice { margin-top: 14px; padding-top: 12px; }
+  #weekList.is-mobile-schedule .day .advice-heading { flex-direction: row; align-items: center; justify-content: space-between; }
+  #weekList.is-mobile-schedule .day .advice-heading > span, #weekList.is-mobile-schedule .day .difficulty-badge { font-size: 12px; }
+  #weekList.is-mobile-schedule .day .advice-pace, #weekList.is-mobile-schedule .day .heart-rate { font-size: 13px; line-height: 1.8; }
+  #weekList.is-mobile-schedule .day .session-notes, #weekList.is-mobile-schedule .day .advice-details { font-size: 12px; }
+  #weekList.is-mobile-schedule .day details > summary { min-height: 34px; display: list-item; padding-top: 7px; }
+  #weekList.is-mobile-schedule .week-footer { display: block; font-size: 11px; line-height: 1.8; border-top: 0; padding: 12px 4px 0; }
+  #weekList.is-mobile-schedule .week-footer strong { display: none; }
+}
+
+@media (max-width: 360px) {
+  .mobile-schedule-controls:not([hidden]) { margin-left: 10px; margin-right: 10px; padding-left: 9px; padding-right: 9px; }
+  .mobile-week-row { grid-template-columns: 38px minmax(0, 1fr) 38px; gap: 5px; }
+  .mobile-week-select select { font-size: 16px; }
+  #weekList.is-mobile-schedule { padding-left: 10px; padding-right: 10px; }
+  #weekList.is-mobile-schedule .day-grid > .day { padding: 16px; }
+  .mobile-swipe-hint { font-size: 9px; }
+}
