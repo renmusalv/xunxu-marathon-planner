@@ -5,7 +5,7 @@ const {vendorOcr} = require('./vendor-ocr.cjs');
 const {vendorCloud} = require('./vendor-cloud.cjs');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
-const CONFIG_KEYS = ['supabaseUrl', 'supabasePublishableKey', 'emailLoginEnabled'];
+const CONFIG_KEYS = ['supabaseUrl', 'supabasePublishableKey', 'emailLoginEnabled', 'sharedLoginEmail', 'passwordLoginEnabled'];
 
 function readPublicConfig(source, environment = process.env) {
   const context = {window: {}};
@@ -13,25 +13,31 @@ function readPublicConfig(source, environment = process.env) {
   const configured = context.window.XUNXU_CONFIG;
   if (!configured || typeof configured !== 'object' || Array.isArray(configured)
       || Object.keys(configured).some(key => !CONFIG_KEYS.includes(key))) {
-    throw new Error('cloud-config.js must contain only the three supported public configuration fields.');
+    throw new Error('cloud-config.js must contain only the five supported public configuration fields.');
   }
   const config = {...configured};
   for (const [variable, field] of [['SUPABASE_URL', 'supabaseUrl'], ['SUPABASE_PUBLISHABLE_KEY', 'supabasePublishableKey']]) {
     const value = environment[variable];
     if (value !== undefined && String(value).trim() !== '') config[field] = String(value).trim();
   }
-  const enabled = environment.EMAIL_LOGIN_ENABLED;
-  if (enabled !== undefined && String(enabled).trim() !== '') {
-    const value = String(enabled).trim().toLowerCase();
-    if (!['true', 'false'].includes(value)) throw new Error('EMAIL_LOGIN_ENABLED must be true or false.');
-    config.emailLoginEnabled = value === 'true';
+  const loginEmail = environment.SHARED_LOGIN_EMAIL;
+  if (loginEmail !== undefined && String(loginEmail).trim() !== '') config.sharedLoginEmail = String(loginEmail).trim().toLowerCase();
+  for (const [variable, field] of [['EMAIL_LOGIN_ENABLED', 'emailLoginEnabled'], ['PASSWORD_LOGIN_ENABLED', 'passwordLoginEnabled']]) {
+    const enabled = environment[variable];
+    if (enabled !== undefined && String(enabled).trim() !== '') {
+      const value = String(enabled).trim().toLowerCase();
+      if (!['true', 'false'].includes(value)) throw new Error(variable + ' must be true or false.');
+      config[field] = value === 'true';
+    }
   }
   if (typeof config.supabaseUrl !== 'string' || typeof config.supabasePublishableKey !== 'string'
-      || typeof config.emailLoginEnabled !== 'boolean') {
-    throw new Error('Public cloud configuration needs two strings and an explicit emailLoginEnabled boolean.');
+      || typeof config.emailLoginEnabled !== 'boolean' || typeof config.sharedLoginEmail !== 'string'
+      || typeof config.passwordLoginEnabled !== 'boolean') {
+    throw new Error('Public cloud configuration needs three strings and two explicit login booleans.');
   }
   config.supabaseUrl = config.supabaseUrl.trim();
   config.supabasePublishableKey = config.supabasePublishableKey.trim();
+  config.sharedLoginEmail = config.sharedLoginEmail.trim().toLowerCase();
   if (config.supabaseUrl) {
     let url;
     try { url = new URL(config.supabaseUrl); } catch { throw new Error('SUPABASE_URL must be a valid HTTPS project origin.'); }
@@ -43,8 +49,14 @@ function readPublicConfig(source, environment = process.env) {
   if (config.supabasePublishableKey && !/^sb_publishable_[A-Za-z0-9_-]{10,}$/.test(config.supabasePublishableKey)) {
     throw new Error('Only a public sb_publishable_ key may be shipped. Secret and service_role keys are forbidden.');
   }
-  if (config.emailLoginEnabled && (!config.supabaseUrl || !config.supabasePublishableKey)) {
-    throw new Error('Enable email login only after providing both the Supabase URL and its publishable key.');
+  if ((config.passwordLoginEnabled || config.emailLoginEnabled) && (!config.supabaseUrl || !config.supabasePublishableKey)) {
+    throw new Error('Enable login only after providing both the Supabase URL and its publishable key.');
+  }
+  if (config.passwordLoginEnabled && !config.sharedLoginEmail) {
+    throw new Error('Enable password login only after providing the shared login email.');
+  }
+  if (config.passwordLoginEnabled && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.sharedLoginEmail)) {
+    throw new Error('SHARED_LOGIN_EMAIL must be a valid email address when password login is enabled.');
   }
   return Object.fromEntries(CONFIG_KEYS.map(key => [key, config[key]]));
 }
@@ -93,6 +105,6 @@ function buildStatic({projectRoot = DEFAULT_ROOT, environment = process.env} = {
 
 if (require.main === module) {
   const result = buildStatic();
-  console.log('Built full public planner with self-hosted OCR and Supabase SDK. Email login flag: ' + result.config.emailLoginEnabled + '.');
+  console.log('Built full public planner with self-hosted OCR and Supabase SDK. Password login flag: ' + result.config.passwordLoginEnabled + '.');
 }
 module.exports = {buildStatic, readPublicConfig};
