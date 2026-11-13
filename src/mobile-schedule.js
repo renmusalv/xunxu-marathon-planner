@@ -77,6 +77,7 @@
     const attributes = new Map();
     const heights = new Map();
     const gridHandlers = new Map();
+    const touchStarts = new WeakMap();
     let weeks = [], selected = null, context = {}, dayButtons = [], destroyed = false;
     let frame = 0, scrollFrame = 0, resizeObserver;
 
@@ -183,8 +184,8 @@
           day.node.tabIndex = -1;
         }
       });
-      previousDay.disabled = selected.dayIndex === 0;
-      nextDay.disabled = selected.dayIndex === week.days.length - 1;
+      previousDay.disabled = selected.weekIndex === 0 && selected.dayIndex === 0;
+      nextDay.disabled = selected.weekIndex === weeks.length - 1 && selected.dayIndex === week.days.length - 1;
       resizeObserver?.disconnect();
       if (media.matches) resizeObserver?.observe(week.days[selected.dayIndex].node);
       fitHeight();
@@ -212,9 +213,9 @@
         tab.addEventListener('keydown', event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
           event.preventDefault();
-          const next = event.key === 'Home' ? 0 : event.key === 'End' ? week.days.length - 1 : Math.max(0, Math.min(week.days.length - 1, index + (event.key === 'ArrowRight' ? 1 : -1)));
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? week.days.length - 1 : index + (event.key === 'ArrowRight' ? 1 : -1);
           changeDay(next);
-          dayButtons[next]?.focus({preventScroll: true});
+          dayButtons[selected?.dayIndex || 0]?.focus({preventScroll: true});
         });
         dayButtons.push(tab);
         dayTabs.appendChild(tab);
@@ -250,7 +251,20 @@
     function changeDay(index) {
       if (!selected) return;
       const week = weeks[selected.weekIndex];
-      if (index < 0 || index >= week.days.length) return;
+      if (index < 0) {
+        if (selected.weekIndex === 0) return;
+        const previous = weeks[selected.weekIndex - 1];
+        selected = {weekIndex: selected.weekIndex - 1, dayIndex: previous.days.length - 1, date: previous.days[previous.days.length - 1].date};
+        applyMode(true);
+        return;
+      }
+      if (index >= week.days.length) {
+        if (selected.weekIndex >= weeks.length - 1) return;
+        const next = weeks[selected.weekIndex + 1];
+        selected = {weekIndex: selected.weekIndex + 1, dayIndex: 0, date: next.days[0].date};
+        applyMode(true);
+        return;
+      }
       selected = {weekIndex: selected.weekIndex, dayIndex: index, date: week.days[index].date};
       updateDayState(true);
       alignSelection();
@@ -279,7 +293,13 @@
     }
 
     function clearGridHandlers() {
-      gridHandlers.forEach((handler, grid) => { grid.removeEventListener('scroll', handler); grid.removeEventListener('toggle', fitHeight, true); });
+      gridHandlers.forEach((handlers, grid) => {
+        grid.removeEventListener('scroll', handlers.scroll);
+        grid.removeEventListener('toggle', fitHeight, true);
+        grid.removeEventListener('touchstart', handlers.touchStart);
+        grid.removeEventListener('touchend', handlers.touchEnd);
+        grid.removeEventListener('touchcancel', handlers.touchCancel);
+      });
       gridHandlers.clear();
       window.cancelAnimationFrame(scrollFrame);
     }
@@ -298,7 +318,7 @@
         remember(week.node);
         heights.set(week.grid, week.grid.style.height);
         week.days.forEach(day => remember(day.node));
-        const handler = () => {
+        const scrollHandler = () => {
           if (!media.matches || !selected || selected.weekIndex !== weekIndex) return;
           window.cancelAnimationFrame(scrollFrame);
           scrollFrame = window.requestAnimationFrame(() => {
@@ -310,9 +330,32 @@
             }
           });
         };
-        week.grid.addEventListener('scroll', handler, {passive: true});
+        const touchStart = event => {
+          const touch = event.changedTouches?.[0];
+          if (!touch) return;
+          touchStarts.set(week.grid, {
+            x: touch.clientX,
+            y: touch.clientY,
+            atLastDay: selected?.weekIndex === weekIndex && selected.dayIndex === week.days.length - 1,
+            atFirstDay: selected?.weekIndex === weekIndex && selected.dayIndex === 0
+          });
+        };
+        const touchEnd = event => {
+          const start = touchStarts.get(week.grid), touch = event.changedTouches?.[0];
+          touchStarts.delete(week.grid);
+          if (!start || !touch || !media.matches || !selected || selected.weekIndex !== weekIndex) return;
+          const dx = touch.clientX - start.x, dy = touch.clientY - start.y;
+          if (Math.abs(dx) < 52 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+          if (dx < 0 && start.atLastDay && weekIndex < weeks.length - 1) changeDay(week.days.length);
+          else if (dx > 0 && start.atFirstDay && weekIndex > 0) changeDay(-1);
+        };
+        const touchCancel = () => touchStarts.delete(week.grid);
+        week.grid.addEventListener('scroll', scrollHandler, {passive: true});
+        week.grid.addEventListener('touchstart', touchStart, {passive: true});
+        week.grid.addEventListener('touchend', touchEnd, {passive: true});
+        week.grid.addEventListener('touchcancel', touchCancel, {passive: true});
         week.grid.addEventListener('toggle', fitHeight, true);
-        gridHandlers.set(week.grid, handler);
+        gridHandlers.set(week.grid, {scroll: scrollHandler, touchStart, touchEnd, touchCancel});
       });
       selected = resolveSelection(weeks, {preferredDate: selected?.date, today: localDate(now())});
       weekSelect.replaceChildren();

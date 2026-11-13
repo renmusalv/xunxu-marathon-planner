@@ -267,12 +267,12 @@
     sessions.filter(session => session.kind === 'easy').forEach(session => { session.paceSource = 'bridge_reference'; });
     return {
       templateWeek: null,
-      phase: '衔接期（非原图）',
+      phase: '衔接期',
       phaseId: 'bridge',
-      label: '衔接期第 ' + (index + 1) + ' 周（非原图）',
+      label: '第 ' + (index + 1) + ' 周',
       sessions,
       totalKm: sumRanges(sessions),
-      notes: ['这是核心 7 周之前的补充衔接安排，不属于原图课表。每周 3 次有氧跑与 1 次力量，进度仅按衔接周数设置。', VOLUME_NOTE]
+      notes: ['这是专项训练前的衔接安排，用于逐步建立训练量；每周安排 3 次有氧跑与 1 次力量，不改变后面的 7 周专项课表。', VOLUME_NOTE]
     };
   }
   function invalid(error) {
@@ -344,7 +344,7 @@
     ];
     if (!mondayWeeks && new Date(raceDay).getUTCDay() !== 0) notes.push('比赛不在周日，完整 7 天训练节奏已整体平移，以比赛日结束每周；比赛前一天保持休息，不安排赛后训练。');
     if (fromDay > coreStart) notes.push('起始日已进入 7 周专项期，只展示相应的剩余模板周；首周已过日期不补训，也不压缩或合并前面的课。');
-    if (bridgeCount) notes.push('核心 7 周前增加 ' + bridgeCount + ' 周「衔接期（非原图）」，其安排不会修改后面的 7 周参考课表。');
+    if (bridgeCount) notes.push('专项训练前增加 ' + bridgeCount + ' 周衔接安排，帮助逐步建立训练量；后面的 7 周专项课表保持不变。');
     if (calibration.mode === 'extrapolated' && Math.abs((target - calibration.nearestAnchorTarget) / HALF) > 60) notes.push('该目标与最近参考图的目标均速相差超过 1 分钟/km。外推不验证训练效果或负荷适合度，请结合当前能力建议和实际恢复情况调整执行。');
     const trainingSessions = allSessions.filter(session => !session.past && session.kind !== 'race');
     const peakKm = [0, 1].map(bound => Math.max(...weeks.map(week => week.totalKm[bound])));

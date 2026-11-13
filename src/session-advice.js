@@ -25,6 +25,15 @@
   function known(assessment) {
     return positive(assessment.equivalentPace) !== null && assessment.evidence?.count !== 0 && !(assessment.evidence?.newestAgeDays > 180);
   }
+  function hasImportedTrainingBase(context) {
+    const marker = context.healthImport;
+    const fields = ['weeklyKm', 'longRun', 'longestRun', 'days', 'runDays'];
+    const imported = marker?.appliedAt && (!Array.isArray(marker.fields) || marker.fields.some(field => fields.includes(field)));
+    return Boolean(imported) && ['weeklyKm', 'longestRun', 'runDays'].some(field => {
+      const value = context[field];
+      return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
+    });
+  }
   function hold(assessment, context) { return assessment.fit?.hold === true || ['pain', 'illness'].includes(context.personal?.discomfort); }
   function kmRange(session) {
     if (validRange(session.totalKm)) return session.totalKm.slice();
@@ -97,7 +106,7 @@
     });
     if (zero.length) add(2, zero.join('、') + '填写为 0，尚无稳定的近期跑步基础；执行目标跑步课难度较高，需先建立基础。');
     if (missing.length) add(0, missing.join('、') + '尚未填写；当前只能比较配速与已填项目，训练基础仍待补充，不能确认整体匹配。');
-    return { missing: missing.length > 0, zero: zero.length > 0 };
+    return { missing: missing.length > 0, zero: zero.length > 0, missingFields: missing, zeroFields: zero };
   }
   function result(level, reasons, extras) {
     const list = unique(reasons);
@@ -142,8 +151,18 @@
     if (context.personal?.recentConsistency === 'restarting') add(1, '近期刚恢复训练，当前难度参考需结合恢复进展重新评估。');
     if (context.personal?.recentConsistency === 'interrupted') add(1, '近期训练有中断，需要观察连续训练和恢复情况。');
     if (!hasAbility) {
-      reasons.unshift(assessment.evidence?.newestAgeDays > 180 ? '有效成绩已超过 180 天，不能据此判断目前完成难度。' : '尚无可用于当前能力估算的近期实绩；请确认 10 km 或半马成绩。');
-      return result('unknown', reasons, { paceText: '待补充近期成绩', heartText: heartText(session, assessment), notes, confidence });
+      if (!hasImportedTrainingBase(context)) {
+        reasons.unshift(assessment.evidence?.newestAgeDays > 180 ? '有效成绩已超过 180 天，不能据此判断目前完成难度。' : '尚无可用于当前能力估算的近期实绩；请确认 10 km 或半马成绩。');
+        return result('unknown', reasons, { paceText: '待补充近期成绩', heartText: heartText(session, assessment), notes, confidence });
+      }
+      const level = levelFor(severity), incomplete = foundation.missing;
+      reasons.unshift('依据个人周跑量、近 30 天最长跑和训练频率比较本课负荷；近期比赛或全力测试成绩未确认，因此暂不判断个人配速能力。');
+      if (incomplete) reasons.push('训练基础还缺少' + foundation.missingFields.join('、') + '，当前结论仅供参考。');
+      return result(incomplete ? 'unknown' : level, reasons, {
+        label: incomplete ? '训练基础待补全 · ' + LABELS[level] : '训练基础 · ' + LABELS[level],
+        paceText: '个人配速待确认；按交谈与体感控制', heartText: heartText(session, assessment),
+        notes: notes.concat('导入的训练跑量与最长跑直接用于本课负荷比较；确认比赛或全力测试成绩后，才会补充个人配速建议。'), confidence: 'low'
+      });
     }
     if (segments.some(s => s.role === 'interval' && positive(s.distanceKm) >= 1.5)) notes.push('2 km 长重复段使用当前节奏能力作为个人建议，不套用短间歇的 5 km 强度；目标课表组数和配速不变。');
     if (segments.some(s => s.role === 'steady')) notes.push('稳定段为当前轻松与节奏建议之间的经验过渡范围；多段保持逐渐加速。');
@@ -183,8 +202,19 @@
       if (challenge) add(1, '部分课程需要逐步准备：' + challenge.reason);
     }
     if (!known(assessment)) {
-      reasons.unshift('需补充近期实绩后，才能把目标课表与个人能力一起判断；现有跑量信息只作负荷提醒。');
-      return result('unknown', reasons, extras);
+      if (!hasImportedTrainingBase(context)) {
+        reasons.unshift('需补充近期实绩后，才能把目标课表与个人能力一起判断；现有跑量信息只作负荷提醒。');
+        return result('unknown', reasons, extras);
+      }
+      const level = levelFor(severity), incomplete = foundation.missing;
+      reasons.unshift('已按本档案的周跑量、近 30 天最长跑和可跑天数比较计划训练负荷；近期比赛或全力测试成绩未确认，暂不判断目标配速适配。');
+      if (incomplete) reasons.push('训练基础还缺少' + foundation.missingFields.join('、') + '，当前结论仅供参考。');
+      return result(incomplete ? 'unknown' : level, reasons, {
+        ...extras,
+        label: incomplete ? '训练基础待补全 · ' + LABELS[level] : '训练基础 · ' + LABELS[level],
+        paceText: '个人配速待确认；按交谈与体感控制',
+        notes: [RULES, '本结论只比较已导入或填写的训练基础与课表负荷；没有近期比赛或全力测试成绩时，不判断目标配速是否适合。']
+      });
     }
     if (!reasons.length) reasons.push('目标课表与当前已知能力、跑量和训练天数较匹配；未来训练适应和比赛表现仍存在不确定性。');
     const notes = [RULES, '按当前状态估计执行难度，未预测未来每周必然进步；目标适配度与实际课表难度分别展示。'];

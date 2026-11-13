@@ -205,7 +205,7 @@ function renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,r
   if(!plan.valid){showGenerationError(plan.error,'raceDate');return}
   const currentValid=$('weeklyKm').value!==''&&Number.isFinite(current)&&current>=0&&current<=160;
   const longValid=$('longRun').value!==''&&Number.isFinite(longBase)&&longBase>=0&&longBase<=42;
-  const context={weeklyKm:currentValid?current:null,longestRun:longValid?longBase:null,runDays:Number.isInteger(runDays)&&runDays>=1&&runDays<=7?runDays:null,personal:personalValues(),now:dateKey(now)};
+  const context={weeklyKm:currentValid?current:null,longestRun:longValid?longBase:null,runDays:Number.isInteger(runDays)&&runDays>=1&&runDays<=7?runDays:null,healthImport:storedHealthImport(),personal:personalValues(),now:dateKey(now)};
   const result=buildAssessment({distanceKm:21.0975,targetSeconds:target,raceDate:dateValue,...context});
   renderGoalRisk(result);renderAbility(result,goal);
   const advice=SessionAdvice.forPlan(plan,result,context),days=Math.ceil((race-now)/86400000),remainingWeeks=Math.ceil((days+1)/7);
@@ -230,10 +230,10 @@ function renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,r
   if(!longValid&&$('longRun').value!=='')warningMessages.push('近 30 天最长跑请填 0–42 km，或留空；缺失时无法判断长跑距离难度。');
   if(result.fit.hold)warningMessages.push('近期身体状态提示需要恢复。目标课表保留为参考，当前建议为暂缓执行。');
   if(days<48)warningMessages.push('距离比赛不足完整七周，只显示剩余模板周次；已过课程不补做。');
-  if(!result.equivalentPace)warningMessages.push('目标课表已生成。补充并确认近期 10 km 或半马实绩后，可查看个人建议配速与更完整的难度判断。');
+  if(!result.equivalentPace)warningMessages.push('目标课表已生成，训练负荷难度已依据个人资料评估。补充并确认近期 10 km 或半马实绩后，可查看个人建议配速与目标成绩适配判断。');
   $('notice').innerHTML=[...new Set(warningMessages)].map(escapeHtml).join('<br>');$('notice').classList.toggle('show',warningMessages.length>0);
   const bridge=plan.weeks.filter(week=>week.templateWeek===null).length;
-  const phaseLabels=[...(bridge?[`衔接期 · ${bridge} 周（非原图）`]:[]),'专项第 1–5 周','减量第 6 周','比赛第 7 周'];
+  const phaseLabels=[...(bridge?[`衔接期 · ${bridge} 周`]:[]),'专项第 1–5 周','减量第 6 周','比赛第 7 周'];
   $('phaseRow').innerHTML=phaseLabels.map((label,index)=>`<span class="phase${index===0?' active':''}"><span>${String(index+1).padStart(2,'0')}</span>${escapeHtml(label)}</span>`).join('');
   const today=dateKey(now);
   $('weekList').innerHTML=plan.weeks.map(week=>{
@@ -244,7 +244,7 @@ function renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,r
       const personalAdvice=isWorkout?SessionAdvice.forSession(session,result,{...context,weekKm:week.totalKm,requiredRunDays:runCount}):null;
       return `<div class="day ${session.kind}${done?' completed':''}${beforeStart?' before-start':''}" data-template-week="${week.templateWeek??'bridge'}" data-date="${date}"><div class="dow"><span>${weekdays[(day.getDay()+6)%7]} ${durationLabel(day)}</span>${beforeStart?'<span>已过 · 不补训</span>':date===today?'<span>今天</span>':''}</div><div class="target-prescription" data-target="true">${isWorkout?'<span class="prescription-label">目标课表</span>':''}<div class="title">${escapeHtml(session.title)}</div>${isWorkout?`<div class="km">${escapeHtml(session.displayAmount)}</div>`:''}<div class="pace">${session.paceLines.map(line=>`<span>${escapeHtml(line)}</span>`).join('')||escapeHtml(session.kind==='rest'?'休息与恢复':session.notes[0]||'按动作完成力量练习')}</div>${isWorkout&&session.notes.length?`<details class="session-notes"><summary>课程说明</summary><p>${session.notes.map(escapeHtml).join(' ')}</p></details>`:''}</div>${!beforeStart?renderAdvice(personalAdvice):''}${isWorkout?`<button type="button" class="checkin${done?' done':''}" data-date="${date}" data-workout="true" aria-pressed="${done}" aria-label="${date} 训练打卡" ${eligible?'':'disabled'}>${done?'已完成':beforeStart?'已过 · 不补训':'打卡'}</button>`:''}</div>`;
     }).join('');
-    return `<article class="week target-week" data-start="${week.startDate}" data-end="${week.endDate}"><div class="week-top"><div class="week-title"><b>${escapeHtml(week.templateWeek===null?week.label:`专项第 ${week.templateWeek} 周`)}</b><span>${durationLabel(parseBenchmarkDate(week.startDate))} — ${durationLabel(parseBenchmarkDate(week.endDate))} · ${escapeHtml(week.phase)}</span></div><div class="week-stats"><span>估算 <strong>${kmRangeLabel(week.totalKm)}</strong> km</span><span>${runCount} 跑 + 力量</span><span class="week-completion">待训练</span></div></div><div class="day-grid">${cells}</div><div class="week-footer"><span>${escapeHtml(week.templateWeek===null?'衔接期为额外安排；七周专项模板保持不变。':week.templateWeek>=6?'按原图逐步减量，保留短暂配速唤醒。':'时长课以分钟为准，周公里数为估算；未列出的热身放松另计。')}</span><strong>目标要求 / 能力建议分列</strong></div></article>`;
+      return `<article class="week target-week" data-start="${week.startDate}" data-end="${week.endDate}"><div class="week-top"><div class="week-title"><b>${escapeHtml(week.templateWeek===null?week.label:`专项第 ${week.templateWeek} 周`)}</b><span>${durationLabel(parseBenchmarkDate(week.startDate))} — ${durationLabel(parseBenchmarkDate(week.endDate))} · ${escapeHtml(week.phase)}</span></div><div class="week-stats"><span>估算 <strong>${kmRangeLabel(week.totalKm)}</strong> km</span><span>${runCount} 跑 + 力量</span><span class="week-completion">待训练</span></div></div><div class="day-grid">${cells}</div><div class="week-footer"><span>${escapeHtml(week.templateWeek===null?'衔接期用于逐步建立训练量；七周专项课表保持不变。':week.templateWeek>=6?'按原图逐步减量，保留短暂配速唤醒。':'时长课以分钟为准，周公里数为估算；未列出的热身放松另计。')}</span><strong>目标要求 / 能力建议分列</strong></div></article>`;
   }).join('');
   updateCheckinProgress();savePlanHistory();
   $('generationStatus').textContent=`已更新：目标 ${clock(target)} · 主课表仅按目标 · ${advice.label}`;
@@ -281,7 +281,11 @@ async function applyHealthPatch(patch,context,healthImport){
   const allowed=['weeklyKm','longRun','days','restingHr','vo2max','vo2maxSource','vo2maxDate'];
   if(Object.keys(patch).some(key=>!allowed.includes(key)))throw new Error('健康摘要含有不支持的字段。');
   clearTimeout(formUpdateTimer);saveProfileForm();clearTimeout(cloudSaveTimer);
-  await client.commit(owner,data=>{data.form={...data.form,...patch,healthImport};return data});
+  await client.commit(owner,data=>{
+    const savedMarker=data.form.healthImport;
+    const marker=healthImport?{...healthImport,fields:[...new Set([...(savedMarker?.fields||[]),...(healthImport.fields||[])])]}:savedMarker;
+    data.form={...data.form,...patch,...(marker?{healthImport:marker}:{})};return data
+  });
   if(epoch!==accountEpoch||owner!==activeProfileId||client!==cloud)return;
   const saved=client.getData(owner).form;
   Object.keys(patch).filter(key=>$(key)).forEach(key=>{$(key).value=saved[key]??''});
@@ -429,7 +433,7 @@ function annotateSession(session,assessment){
   if(!session||['strength','rest'].includes(session.kind))return;
   // The main prescription is immutable here; ability is an annotation only.
   const key=session.kind==='long'?'long':session.kind==='race'?'race':session.kind==='quality'?'tempo':session.title.includes('恢复')?'recovery':'easy';
-  const advice=SessionAdvice.forSession({...session,paceType:key,distanceKm:session.km,totalKm:[session.km,session.km]},assessment,{weeklyKm:Number($('weeklyKm').value),longestRun:Number($('longRun').value),runDays:Number($('days').value),personal:personalValues()});
+  const advice=SessionAdvice.forSession({...session,paceType:key,distanceKm:session.km,totalKm:[session.km,session.km]},assessment,{weeklyKm:Number($('weeklyKm').value),longestRun:Number($('longRun').value),runDays:Number($('days').value),healthImport:storedHealthImport(),personal:personalValues()});
   session.advice=advice;
   session.heart=`当前能力建议：${advice.paceText||'待补充成绩'} · ${advice.label}${advice.heartText?' · '+advice.heartText:''}`;
 }
@@ -778,7 +782,7 @@ if(typeof XunxuMobileSchedule!=='undefined')mobileSchedule=XunxuMobileSchedule.c
 if(typeof XunxuWorkspace!=='undefined')workspace=XunxuWorkspace.create({shell:$('workspaceShell'),profile:$('plannerForm'),plan:$('planWorkspace'),tabs:$('workspaceTabs'),onSchedule:()=>mobileSchedule?.activate()});
 if(typeof XunxuGoalOverview!=='undefined')goalOverview=XunxuGoalOverview.create({root:$('goalOverview'),hero:$('raceHero'),heroToggle:$('heroToggle')});
 if(typeof XunxuHealthPanel!=='undefined'&&typeof XunxuHealthImport!=='undefined')healthPanel=XunxuHealthPanel.create({dialog:$('healthDialog'),engine:XunxuHealthImport,getContext:healthContext,onApply:applyHealthPatch,onApplied:finishHealthApply,onReviewCandidate:reviewHealthCandidate,onStatus:updateHealthImportStatus});
-$('openHealthButton').addEventListener('click',()=>healthPanel?.open());$('openHealthFromProfile').addEventListener('click',()=>healthPanel?.open());
+  $('openHealthFromProfile').addEventListener('click',()=>healthPanel?.open());
 $('editGoalButton').addEventListener('click',()=>{selectSetupTab('race');$('raceDate').focus();$('panel-race').scrollIntoView({behavior:'smooth',block:'start'})});
 $('profileSelect').addEventListener('change',()=>switchProfile($('profileSelect').value));
 $('addProfileButton').addEventListener('click',()=>{if(!cloudReady)return;$('profileName').value='';$('profileName').setCustomValidity('');$('profileDialog').showModal();$('profileName').focus()});

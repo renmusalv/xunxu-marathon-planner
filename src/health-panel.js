@@ -75,11 +75,11 @@
       const candidates = (report.candidates || []).slice(0,12);
       $('healthCandidates').innerHTML = candidates.length ? candidates.map((item,index) => `<article class="health-candidate"><div><strong>${esc(item.date)} · ${esc(labelValue(item.distanceKm,'km'))}</strong><small>${esc(item.sourceName || 'Apple 健康')} · 待确认比赛 / 测试性质与计时</small></div><button type="button" data-health-candidate="${index}">核对成绩</button></article>`).join('') : '<p class="health-muted">未找到近期可核对的 10 km / 半马记录。可继续上传成绩截图或手动添加。</p>';
       $('healthEvaluationHint').textContent = candidates.length
-        ? `为什么仍显示“资料不足”？健康导入已经读取训练基础；目标评估还需要一条近 180 天已确认的 10 km / 半马比赛或全力测试成绩。下面有 ${candidates.length} 条候选记录，点击“核对成绩”，确认比赛性质与完整计时并保存后才会纳入。`
-        : '为什么仍显示“资料不足”？这次导入可以补充跑量、最长距离和心率，但无法判断普通训练是否全力或属于比赛。目标评估还需要一条近 180 天已确认的 10 km / 半马比赛或全力测试成绩；请上传比赛截图或手动添加。';
+        ? `健康导入的周跑量、最长跑和训练频率会直接写入个人资料，并用于比较训练计划的负荷难度。另有 ${candidates.length} 条记录可核对；确认是比赛或全力测试且计时完整后，才会用于个人配速建议和目标成绩判断。`
+        : '健康导入的周跑量、最长跑和训练频率会直接写入个人资料，用于比较训练计划的负荷难度。普通训练不会自动当作比赛成绩；如需个人配速建议和目标成绩判断，请补充近期已确认的 10 km / 半马比赛或全力测试。';
       const warnings = [...(report.warnings || []),...(report.limitations || [])];
       $('healthWarnings').innerHTML = warnings.length ? '<ul>' + warnings.map(message => `<li>${esc(message)}</li>`).join('') + '</ul>' : '';
-      $('healthApplyButton').disabled = false; $('healthApplyButton').textContent = '应用所选数据并生成课表';
+      $('healthApplyButton').disabled = false; $('healthApplyButton').textContent = '应用到个人资料并更新难度评估';
       $('healthDataDestination').textContent = savedText();
       $('healthStatus').textContent = '读取完成，原始文件未上传。核对后再应用到本档案。';
     }
@@ -93,7 +93,7 @@
       $('healthReview').hidden = !report; $('healthReadProgress').hidden = true; error('');
       $('healthFile').value = ''; $('healthChooseFile').disabled = false;
       $('healthStatus').textContent = context.healthImport?.appliedAt
-        ? `当前档案已有健康数据导入记录（${context.healthImport.analyzedOn || '日期未记录'}）。重新选择文件可更新训练摘要。`
+        ? `当前档案已有健康数据导入记录（${context.healthImport.analyzedOn || '日期未记录'}）。${context.healthImport.fields?.some(field => ['weeklyKm','longRun','days'].includes(field)) ? '训练基础已纳入计划难度评估。' : '重新应用时选择周跑量、最长跑或训练频率，可纳入计划难度评估。'}重新选择文件可更新。`
         : '支持中英文文件名；选择健康 ZIP，或解压后的导出.xml / export.xml。';
       $('healthDataDestination').textContent = savedText();
       if (report) renderReport();
@@ -134,7 +134,7 @@
         const runDays = $('healthRunDays').value;
         const patch = buildFormPatch(report,{fields,completeCoverage:$('healthCoverage').checked,runDays});
         const marker = {appliedAt:new Date().toISOString(),analyzedOn:report.analyzedOn || report.window?.end || '',fields:[...fields,...(runDays ? ['days'] : [])]};
-        busy = true; $('healthApplyButton').disabled = true; $('healthApplyButton').textContent = '正在应用…'; $('healthChooseFile').disabled = true;
+        busy = true; $('healthApplyButton').disabled = true; $('healthApplyButton').textContent = '正在应用到个人资料…'; $('healthChooseFile').disabled = true;
         await onApply(patch,context,marker);
         if (!live()) return;
         reports.set(context.key,{report:appliedReport,applied:true,marker});
@@ -142,7 +142,7 @@
       } catch (cause) {
         if (live()) error(cause.message || '未能应用健康数据，请重试。');
       } finally {
-        if (live()) {busy = false; $('healthApplyButton').disabled = false; $('healthApplyButton').textContent = '应用所选数据并生成课表'; $('healthChooseFile').disabled = false;}
+        if (live()) {busy = false; $('healthApplyButton').disabled = false; $('healthApplyButton').textContent = '应用到个人资料并更新难度评估'; $('healthChooseFile').disabled = false;}
       }
     }
 
@@ -165,7 +165,7 @@
       reset({clearReports=false}={}) {close();if(clearReports)reports.clear();},
       status(key, marker) {
         const entry=reports.get(key),saved=entry?.applied?entry.marker:marker;
-        if(saved?.appliedAt){const date=saved.analyzedOn||saved.appliedAt.slice(0,10);return `已导入健康数据 · ${date} · 已应用 · 评估需另核对近期成绩`}
+        if(saved?.appliedAt){const date=saved.analyzedOn||saved.appliedAt.slice(0,10),trainingFields=['weeklyKm','longRun','days'];const included=Array.isArray(saved.fields)&&saved.fields.some(field=>trainingFields.includes(field));return `已导入健康数据 · ${date} · 已应用到个人资料${included?' · 训练基础已纳入难度评估':''}`}
         return entry?'健康文件已读取 · 等待核对应用':'尚未导入 · 导入 Apple 健康文件并应用后会标记';
       },
       destroy() {close();destroyed=true;reports.clear();listeners.forEach(remove=>remove());}
