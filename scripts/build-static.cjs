@@ -68,6 +68,12 @@ function buildStatic({projectRoot = DEFAULT_ROOT, environment = process.env} = {
       fs.copyFileSync(path.join(source, entry.name), path.join(output, entry.name));
     }
   }
+  // Only reviewed visual assets are published; no health export or test fixture.
+  const hero = path.join(projectRoot, 'assets', 'half-marathon-hero.jpg');
+  if (fs.existsSync(hero)) {
+    fs.mkdirSync(path.join(output, 'assets'), {recursive: true});
+    fs.copyFileSync(hero, path.join(output, 'assets', 'half-marathon-hero.jpg'));
+  }
   // Environment overrides affect the generated artifact only. The tracked
   // default configuration remains available for an unconfigured trial build.
   fs.writeFileSync(path.join(output, 'cloud-config.js'), 'window.XUNXU_CONFIG = ' + JSON.stringify(config, null, 2) + ';\n');
@@ -76,7 +82,7 @@ function buildStatic({projectRoot = DEFAULT_ROOT, environment = process.env} = {
   fs.writeFileSync(path.join(output, '.nojekyll'), '');
 
   const html = fs.readFileSync(path.join(output, 'index.html'), 'utf8');
-  for (const [, resource] of html.matchAll(/(?:src|href)="([^"#]+\.(?:css|js))"/g)) {
+  for (const [, resource] of html.matchAll(/(?:src|href)="([^"#]+\.(?:css|js|jpg))"/g)) {
     const resolved = path.resolve(output, resource);
     if (!resource.startsWith('./') || !resolved.startsWith(output + path.sep) || !fs.existsSync(resolved)) {
       throw new Error('Planner asset must exist under the Pages project path: ' + resource);
