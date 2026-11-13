@@ -49,6 +49,10 @@
     return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? timestamp : null;
   }
   function dateKey(timestamp) { return new Date(timestamp).toISOString().slice(0, 10); }
+  function mondayStart(timestamp) {
+    const weekday = new Date(timestamp).getUTCDay();
+    return timestamp - ((weekday + 6) % 7) * DAY;
+  }
   function shiftedPace(base, delta) {
     return (Array.isArray(base) ? base : [base, base]).map(value => value + delta);
   }
@@ -275,6 +279,19 @@
     return { valid: false, error, weeks: [], notes: [error], summary: null, targetPace: null, templateRacePace: null, calibration: null };
   }
 
+  function mondayRaceWeek(targetSeconds, raceWeekday) {
+    const week = weekTemplate(6, targetSeconds);
+    if (raceWeekday === 6) return week;
+    const template = week.sessions, sessions = Array.from({length: 7}, rest);
+    if (raceWeekday >= 2) sessions[0] = template[0];
+    if (raceWeekday >= 3) sessions[raceWeekday - 2] = template[4];
+    sessions[raceWeekday] = template[6];
+    week.sessions = sessions;
+    week.totalKm = sumRanges(sessions);
+    week.notes.push('赛周保持周一至周日；比赛日前安排轻松跑、轻量激活与休息，比赛日之后不排训练。');
+    return week;
+  }
+
   function build(input) {
     input = input || {};
     const target = goalValue(input.targetSeconds);
@@ -287,13 +304,17 @@
 
     const delta = (target - BASE_TARGET) / HALF;
     const calibration = calibrationFor(target);
-    const coreStart = raceDay - 48 * DAY;
-    const bridgeCount = Math.max(0, Math.ceil((coreStart - fromDay) / (7 * DAY)));
-    const firstCoreIndex = Math.max(0, Math.floor((fromDay - coreStart) / (7 * DAY)));
+    const mondayWeeks = input.weekStartsMonday === true;
+    const raceWeekday = (new Date(raceDay).getUTCDay() + 6) % 7;
+    const fromAnchor = mondayWeeks ? mondayStart(fromDay) : fromDay;
+    const coreStart = mondayWeeks ? mondayStart(raceDay) - 42 * DAY : raceDay - 48 * DAY;
+    const bridgeCount = Math.max(0, Math.ceil((coreStart - fromAnchor) / (7 * DAY)));
+    const firstCoreIndex = Math.max(0, Math.floor((fromAnchor - coreStart) / (7 * DAY)));
     const calendarStart = bridgeCount ? coreStart - bridgeCount * 7 * DAY : coreStart + firstCoreIndex * 7 * DAY;
+    if (bridgeCount + 7 - firstCoreIndex > MAX_WEEKS) return invalid('按周一至周日排布后将超过 24 周，请选择更近的比赛日期。');
     const weeks = [];
     for (let bridgeIndex = 0; bridgeIndex < bridgeCount; bridgeIndex += 1) weeks.push(bridgeWeek(bridgeIndex, bridgeCount, target));
-    for (let templateIndex = firstCoreIndex; templateIndex < 7; templateIndex += 1) weeks.push(weekTemplate(templateIndex, target));
+    for (let templateIndex = firstCoreIndex; templateIndex < 7; templateIndex += 1) weeks.push(mondayWeeks && templateIndex === 6 ? mondayRaceWeek(target, raceWeekday) : weekTemplate(templateIndex, target));
     weeks.forEach((week, index) => {
       const start = calendarStart + index * 7 * DAY;
       week.index = index;
@@ -319,7 +340,7 @@
       '两张参考图的有氧配速相差 10 秒/km，多数质量段相差 15 秒/km，专项自测末段范围也有差异；各课分别校准，不把所有配速统一加减同一数值。',
       VOLUME_NOTE
     ];
-    if (new Date(raceDay).getUTCDay() !== 0) notes.push('比赛不在周日，完整 7 天训练节奏已整体平移，以比赛日结束每周；比赛前一天保持休息，不安排赛后训练。');
+    if (!mondayWeeks && new Date(raceDay).getUTCDay() !== 0) notes.push('比赛不在周日，完整 7 天训练节奏已整体平移，以比赛日结束每周；比赛前一天保持休息，不安排赛后训练。');
     if (fromDay > coreStart) notes.push('起始日已进入 7 周专项期，只展示相应的剩余模板周；首周已过日期不补训，也不压缩或合并前面的课。');
     if (bridgeCount) notes.push('核心 7 周前增加 ' + bridgeCount + ' 周「衔接期（非原图）」，其安排不会修改后面的 7 周参考课表。');
     if (calibration.mode === 'extrapolated' && Math.abs((target - calibration.nearestAnchorTarget) / HALF) > 60) notes.push('该目标与最近参考图的目标均速相差超过 1 分钟/km。外推不验证训练效果或负荷适合度，请结合当前能力建议和实际恢复情况调整执行。');

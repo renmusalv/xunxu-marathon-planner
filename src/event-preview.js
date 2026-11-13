@@ -72,6 +72,9 @@
   const $ = id => document.getElementById(id);
   const list = $('eventPreviewList');
   if (!list) return;
+  const previous = $('eventPreviewPrev');
+  const next = $('eventPreviewNext');
+  const position = $('eventPreviewPosition');
 
   function shanghaiDateKey(date = new Date()) {
     const parts = new Intl.DateTimeFormat('en', {timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'}).formatToParts(date);
@@ -112,6 +115,8 @@
   function cardFor(event, state) {
     const card = document.createElement('article');
     card.className = `event-card event-card-${state}`;
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-roledescription', '赛事');
     const date = document.createElement('div');
     date.className = 'event-date';
     date.innerHTML = `<strong>${Number(event.date.slice(5, 7))}<small>月</small></strong><span>${Number(event.date.slice(8, 10))}日</span>`;
@@ -181,6 +186,29 @@
   $('eventPreviewUpdated').textContent = `赛程信息更新于 ${prettyDate(UPDATED)} · 当前展示 ${prettyDate(today)} 至 ${prettyDate(horizon)}`;
 
   let filter = 'all';
+  let scrollFrame = 0;
+  function slides() { return Array.from(list.querySelectorAll('.event-card')); }
+  function activeSlideIndex(items) {
+    if (!items.length) return -1;
+    const left = list.getBoundingClientRect().left + parseFloat(getComputedStyle(list).paddingLeft || '0');
+    return items.reduce((closest, item, index) => Math.abs(item.getBoundingClientRect().left - left) < Math.abs(items[closest].getBoundingClientRect().left - left) ? index : closest, 0);
+  }
+  function updateCarouselControls() {
+    const items = slides(), index = activeSlideIndex(items);
+    position.textContent = items.length ? `${index + 1} / ${items.length}` : '0 / 0';
+    previous.disabled = index <= 0;
+    next.disabled = index < 0 || index >= items.length - 1;
+    items.forEach((item, itemIndex) => {
+      item.setAttribute('aria-label', `${itemIndex + 1} / ${items.length} · ${item.dataset.name}`);
+    });
+  }
+  function moveSlide(delta) {
+    const items = slides();
+    if (!items.length) return;
+    const index = Math.max(0, Math.min(items.length - 1, activeSlideIndex(items) + delta));
+    const listRect = list.getBoundingClientRect(), itemRect = items[index].getBoundingClientRect();
+    list.scrollBy({left: itemRect.left - listRect.left - parseFloat(getComputedStyle(list).paddingLeft || '0'), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  }
   function render() {
     list.replaceChildren();
     const filtered = states.filter(item => filter === 'all' || item.state === filter);
@@ -189,9 +217,13 @@
       empty.className = 'event-empty';
       empty.textContent = filter === 'open' ? '当前收录赛事没有仍在报名的场次。' : '当前筛选下没有赛事。';
       list.appendChild(empty);
+      list.scrollLeft = 0;
+      updateCarouselControls();
       return;
     }
     filtered.forEach(({event, state}) => list.appendChild(cardFor(event, state)));
+    list.scrollLeft = 0;
+    updateCarouselControls();
   }
   document.querySelectorAll('[data-event-filter]').forEach(button => {
     button.addEventListener('click', () => {
@@ -199,6 +231,17 @@
       document.querySelectorAll('[data-event-filter]').forEach(option => option.setAttribute('aria-pressed', String(option === button)));
       render();
     });
+  });
+  previous.addEventListener('click', () => moveSlide(-1));
+  next.addEventListener('click', () => moveSlide(1));
+  list.addEventListener('scroll', () => {
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {scrollFrame = 0; updateCarouselControls();});
+  }, {passive:true});
+  list.addEventListener('keydown', event => {
+    if (event.target !== list || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    moveSlide(event.key === 'ArrowRight' ? 1 : -1);
   });
   render();
 })();

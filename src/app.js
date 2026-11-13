@@ -201,7 +201,7 @@ function renderAdvice(advice){
 }
 function renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,runDays}){
   targetCheckinState(dateValue,target,now);
-  const plan=TargetPlan.build({targetSeconds:target,raceDate:dateValue,fromDate:activePlanStartDate});
+  const plan=TargetPlan.build({targetSeconds:target,raceDate:dateValue,fromDate:activePlanStartDate,weekStartsMonday:true});
   if(!plan.valid){showGenerationError(plan.error,'raceDate');return}
   const currentValid=$('weeklyKm').value!==''&&Number.isFinite(current)&&current>=0&&current<=160;
   const longValid=$('longRun').value!==''&&Number.isFinite(longBase)&&longBase>=0&&longBase<=42;
@@ -212,7 +212,7 @@ function renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,r
   $('goalTimeHint').textContent=`目标均速 ${fmt(goal)}/km · 课表按目标生成`;
   $('finishTime').textContent=clock(target);$('weeksMetric').textContent=`${remainingWeeks} 周`;$('daysMetric').textContent=`${days} 天`;
   $('summaryTitle').textContent=`半马 ${clock(target)} 目标训练计划`;
-  $('summaryCopy').textContent=`${durationLabel(parseBenchmarkDate(activePlanStartDate))} – ${durationLabel(race)} · 七周专项结构 + 当前能力旁注`;
+  $('summaryCopy').textContent=`${durationLabel(parseBenchmarkDate(plan.summary.calendarStartDate))} – ${durationLabel(race)} · 周一开始 · 七周专项结构 + 当前能力旁注`;
   $('peakMetric').textContent=`${kmRangeLabel(plan.summary.peakKm)} km`;
   $('longMetric').textContent=plan.summary.longestKm?`${plan.summary.longestKm} km`:'已进入比赛周';
   $('qualityMetric').textContent='周中专项 + 长跑';
@@ -267,8 +267,9 @@ function refreshPlanInterface(){
   $('mobilePlanStatus').textContent=failed?$('notice').textContent:hold?'当前建议：先恢复，暂缓执行强化训练。':label?.includes('资料不足')?'完成难度待评估 · 可先查看目标课表':`完成难度：${label||'待评估'} · 目标配速保持不变`;
   $('planInsightStatus').textContent=label||'待评估';
 }
-function healthContext(){return{key:`${accountEpoch}:${currentUserId||'guest'}:${activeProfileId}`,profileId:activeProfileId,profileName:profiles.find(item=>item.id===activeProfileId)?.name||'当前档案',mode:storageMode,ready:cloudReady&&!profileSwitching,today:dateKey(new Date()),form:captureProfileForm()}}
-function updateHealthImportStatus(){if(healthPanel&&$('healthImportStatus'))$('healthImportStatus').textContent=healthPanel.status(healthContext().key)}
+function storedHealthImport(){try{return cloud.getData(activeProfileId)?.form?.healthImport||null}catch{return null}}
+function healthContext(){return{key:`${accountEpoch}:${currentUserId||'guest'}:${activeProfileId}`,profileId:activeProfileId,profileName:profiles.find(item=>item.id===activeProfileId)?.name||'当前档案',mode:storageMode,ready:cloudReady&&!profileSwitching,today:dateKey(new Date()),form:captureProfileForm(),healthImport:storedHealthImport()}}
+function updateHealthImportStatus(){if(healthPanel&&$('healthImportStatus'))$('healthImportStatus').textContent=healthPanel.status(healthContext().key,storedHealthImport())}
 function updateGoalOverview(){
   if(!goalOverview)return;
   const distance=Number($('distance').value),target=distance<30?parseTimeInput($('halfGoalTime').value):Number($('paceMin').value)*60*distance+Number($('paceSec').value)*distance;
@@ -277,13 +278,13 @@ function updateGoalOverview(){
 async function applyHealthPatch(patch,context){
   if(!cloudReady||profileSwitching||context.key!==healthContext().key)throw new Error('当前档案已变化，请在目标档案中重新导入。');
   const owner=activeProfileId,epoch=accountEpoch,client=cloud;
-  const allowed=['weeklyKm','longRun','days','restingHr','vo2max','vo2maxSource','vo2maxDate'];
+  const allowed=['weeklyKm','longRun','days','restingHr','vo2max','vo2maxSource','vo2maxDate','healthImport'];
   if(Object.keys(patch).some(key=>!allowed.includes(key)))throw new Error('健康摘要含有不支持的字段。');
   clearTimeout(formUpdateTimer);saveProfileForm();clearTimeout(cloudSaveTimer);
   await client.commit(owner,data=>{data.form={...data.form,...patch};return data});
   if(epoch!==accountEpoch||owner!==activeProfileId||client!==cloud)return;
   const saved=client.getData(owner).form;
-  Object.keys(patch).forEach(key=>{$(key).value=saved[key]??''});
+  Object.keys(patch).filter(key=>$(key)).forEach(key=>{$(key).value=saved[key]??''});
   updatePersonalSummary();render();
 }
 function finishHealthApply(context){
@@ -296,7 +297,9 @@ function finishHealthApply(context){
   }else if($('generationStatus').textContent.startsWith('计划未更新')){
     focusValidation=true;render();focusValidation=false;
   }
-  toast(generated?savedMessage('所选健康摘要已保存到本档案，分析与课表已更新。','所选健康摘要已用于本次分析，试用数据刷新后会丢失。'):lastAssessment?.fit?.hold?'所选健康摘要已应用；当前建议先恢复，暂缓强化训练。':'所选健康摘要已应用，请完善比赛设置后生成课表。');
+  const missingResult=!lastAssessment?.equivalentPace;
+  const applied=missingResult?'训练基础已更新；目标评估还需要一条近 180 天已确认的 10 km / 半马比赛或全力测试成绩。点击候选记录“核对成绩”并保存，或上传截图 / 手动添加。':'训练摘要与导入标记已更新，目标评估已重新计算。';
+  toast(generated?savedMessage(`所选健康摘要已保存到本档案。${applied}`,`所选健康摘要已用于当前试用档案。${applied} 刷新后试用资料会丢失。`):lastAssessment?.fit?.hold?'所选健康摘要已应用；当前建议先恢复，暂缓强化训练。':`所选健康摘要已应用。${applied}`);
 }
 function reviewHealthCandidate(candidate,context){
   if(context.key!==healthContext().key||!cloudReady)return;

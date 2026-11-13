@@ -74,6 +74,9 @@
       $('healthRunDaysHint').textContent = `记录周均 ${labelValue(s.runDaysPerWeek,'天')}。如有小数，请按真实常态选择，不自动四舍五入。`;
       const candidates = (report.candidates || []).slice(0,12);
       $('healthCandidates').innerHTML = candidates.length ? candidates.map((item,index) => `<article class="health-candidate"><div><strong>${esc(item.date)} · ${esc(labelValue(item.distanceKm,'km'))}</strong><small>${esc(item.sourceName || 'Apple 健康')} · 待确认比赛 / 测试性质与计时</small></div><button type="button" data-health-candidate="${index}">核对成绩</button></article>`).join('') : '<p class="health-muted">未找到近期可核对的 10 km / 半马记录。可继续上传成绩截图或手动添加。</p>';
+      $('healthEvaluationHint').textContent = candidates.length
+        ? `为什么仍显示“资料不足”？健康导入已经读取训练基础；目标评估还需要一条近 180 天已确认的 10 km / 半马比赛或全力测试成绩。下面有 ${candidates.length} 条候选记录，点击“核对成绩”，确认比赛性质与完整计时并保存后才会纳入。`
+        : '为什么仍显示“资料不足”？这次导入可以补充跑量、最长距离和心率，但无法判断普通训练是否全力或属于比赛。目标评估还需要一条近 180 天已确认的 10 km / 半马比赛或全力测试成绩；请上传比赛截图或手动添加。';
       const warnings = [...(report.warnings || []),...(report.limitations || [])];
       $('healthWarnings').innerHTML = warnings.length ? '<ul>' + warnings.map(message => `<li>${esc(message)}</li>`).join('') + '</ul>' : '';
       $('healthApplyButton').disabled = false; $('healthApplyButton').textContent = '应用所选数据并生成课表';
@@ -89,7 +92,9 @@
       $('healthOwner').textContent = context.profileName || '当前档案';
       $('healthReview').hidden = !report; $('healthReadProgress').hidden = true; error('');
       $('healthFile').value = ''; $('healthChooseFile').disabled = false;
-      $('healthStatus').textContent = '支持中英文文件名；选择健康 ZIP，或解压后的导出.xml / export.xml。';
+      $('healthStatus').textContent = context.healthImport?.appliedAt
+        ? `当前档案已有健康数据导入记录（${context.healthImport.analyzedOn || '日期未记录'}）。重新选择文件可更新训练摘要。`
+        : '支持中英文文件名；选择健康 ZIP，或解压后的导出.xml / export.xml。';
       $('healthDataDestination').textContent = savedText();
       if (report) renderReport();
       if (!dialog.open) dialog.showModal();
@@ -125,11 +130,14 @@
       const live = () => job === sequence && valid() && current.key === context.key;
       error('');
       try {
-        const patch = buildFormPatch(report,{fields:Array.from(dialog.querySelectorAll('[data-health-field]:checked')).map(input=>input.dataset.healthField),completeCoverage:$('healthCoverage').checked,runDays:$('healthRunDays').value});
+        const fields = Array.from(dialog.querySelectorAll('[data-health-field]:checked')).map(input=>input.dataset.healthField);
+        const runDays = $('healthRunDays').value;
+        const patch = buildFormPatch(report,{fields,completeCoverage:$('healthCoverage').checked,runDays});
+        patch.healthImport = {appliedAt:new Date().toISOString(),analyzedOn:report.analyzedOn || report.window?.end || '',fields:[...fields,...(runDays ? ['days'] : [])]};
         busy = true; $('healthApplyButton').disabled = true; $('healthApplyButton').textContent = '正在应用…'; $('healthChooseFile').disabled = true;
         await onApply(patch,context);
         if (!live()) return;
-        reports.set(context.key,{report:appliedReport,applied:true});
+        reports.set(context.key,{report:appliedReport,applied:true,marker:patch.healthImport});
         close(); onStatus?.(); onApplied?.(context);
       } catch (cause) {
         if (live()) error(cause.message || '未能应用健康数据，请重试。');
@@ -155,7 +163,11 @@
     return {
       open,
       reset({clearReports=false}={}) {close();if(clearReports)reports.clear();},
-      status(key) {const entry=reports.get(key);return entry?.applied?'已应用健康摘要 · 可再次导入更新':entry?'健康文件已读取 · 等待核对':'导入 Apple 健康文件，核对后自动填写';},
+      status(key, marker) {
+        const entry=reports.get(key),saved=entry?.applied?entry.marker:marker;
+        if(saved?.appliedAt){const date=saved.analyzedOn||saved.appliedAt.slice(0,10);return `已导入健康数据 · ${date} · 评估需另核对近期成绩`}
+        return entry?'健康文件已读取 · 等待核对应用':'尚未导入 · 选择健康文件并应用后会标记';
+      },
       destroy() {close();destroyed=true;reports.clear();listeners.forEach(remove=>remove());}
     };
   }
