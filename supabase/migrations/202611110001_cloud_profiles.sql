@@ -68,7 +68,7 @@ returns uuid language plpgsql stable security definer set search_path = '' as $$
 declare v_actor uuid := xunxu_private.verified_uid();
 begin
   if v_actor is null then
-    perform xunxu_private.fail('PT401', 'AUTH_REQUIRED', '请先使用邮箱验证码登录，再保存云端档案。');
+    perform xunxu_private.fail('PT401', 'AUTH_REQUIRED', '请先登录，再保存云端档案。');
   end if;
   return v_actor;
 end;
@@ -557,6 +557,6 @@ grant execute on function public.xunxu_list_profiles(),public.xunxu_get_profile(
   public.xunxu_prepare_image(text,text,bigint,text,bigint),public.xunxu_get_image_key(text,text),
   public.xunxu_claim_cleanup(integer),public.xunxu_ack_cleanup(uuid) to authenticated;
 
-comment on table public.xunxu_profiles is 'Verified-email private profiles; writes only through owner-checked CAS RPCs.';
+comment on table public.xunxu_profiles is 'Verified Supabase Auth private profiles; writes only through owner-checked CAS RPCs.';
 comment on table xunxu_private.image_uploads is 'Private versioned image tickets and durable owner-driven cleanup tombstones. Never delete storage.objects with SQL.';
 commit;
