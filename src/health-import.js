@@ -9,7 +9,7 @@
 
   const DAY = 86400000;
   const HALF = 21.0975;
-  const LIMITS = Object.freeze({ fileBytes: 256 * 1024 * 1024, xmlBytes: 256 * 1024 * 1024, textCharacters: 64 * 1024 * 1024, tagCharacters: 1024 * 1024, records: 5000000, workouts: 20000, zipEntries: 20000, zipDirectoryBytes: 16 * 1024 * 1024, compressionRatio: 300 });
+  const LIMITS = Object.freeze({ fileBytes: 256 * 1024 * 1024, xmlBytes: 256 * 1024 * 1024, textCharacters: 64 * 1024 * 1024, tagCharacters: 1024 * 1024, records: 5000000, workouts: 20000, zipEntries: 20000, zipDirectoryBytes: 16 * 1024 * 1024, zipXmlCandidates: 32, zipProbeBytes: 1024 * 1024, compressionRatio: 300 });
   const TYPE = 'HKQuantityTypeIdentifier';
   const REST = TYPE + 'RestingHeartRate';
   const VO2 = TYPE + 'VO2Max';
@@ -259,6 +259,68 @@
     return table;
   })();
   function crcUpdate(crc, bytes) { for (const byte of bytes) crc = crcTable[(crc ^ byte) & 255] ^ (crc >>> 8); return crc >>> 0; }
+  // Health exports localize the XML filename (for example, 导出.xml). Inspect
+  // the first real root element, never a filename or a HealthData string in a
+  // comment / DTD. The complete parser and CRC still validate the chosen file.
+  function healthRootPrefix(text) {
+    let position = 0;
+    text = text.replace(/^\uFEFF/, '');
+    for (;;) {
+      const opening = text.indexOf('<', position);
+      if (opening < 0) return text.slice(position).trim() ? false : null;
+      if (text.slice(position, opening).trim()) return false;
+      const remaining = text.slice(opening), end = tagEnd(remaining);
+      if (end < 0) return null;
+      const tag = remaining.slice(0, end + 1);
+      position = opening + end + 1;
+      if (tag.startsWith('<?') || tag.startsWith('<!--') || /^<!DOCTYPE\b/i.test(tag)) continue;
+      const match = tag.match(/^<([A-Za-z_][\w:.-]*)(?=[\s/>])/);
+      return Boolean(match && match[1] === 'HealthData');
+    }
+  }
+  async function openZipEntry(file, entry, directoryOffset, probe) {
+    if (entry.flags & 1) fail('UNSUPPORTED_ZIP', '无法读取加密 ZIP，请先解密并选择健康主数据 XML。');
+    if (![0, 8].includes(entry.method)) fail('UNSUPPORTED_ZIP', '此 ZIP 压缩方式不受支持，请解压后选择健康主数据 XML。');
+    if (!entry.uncompressed || !entry.compressed || (!probe && (entry.uncompressed > LIMITS.xmlBytes || entry.uncompressed / entry.compressed > LIMITS.compressionRatio))) fail('FILE_TOO_LARGE', '健康 XML 超过安全读取范围，当前完整读取上限为 256 MB。');
+    if (entry.local + 30 > directoryOffset) fail('INVALID_ZIP', 'ZIP 文件定位信息损坏。');
+    const localBytes = await file.slice(entry.local, entry.local + 30).arrayBuffer(), local = new DataView(localBytes);
+    if (local.getUint32(0, true) !== 0x04034b50 || local.getUint16(6, true) !== entry.flags || local.getUint16(8, true) !== entry.method) fail('INVALID_ZIP', 'ZIP 文件头不一致。');
+    const nameLength = local.getUint16(26, true), start = entry.local + 30 + nameLength + local.getUint16(28, true);
+    if (start + entry.compressed > directoryOffset) fail('INVALID_ZIP', 'ZIP 数据不完整。');
+    const localName = new Uint8Array(await file.slice(entry.local + 30, entry.local + 30 + nameLength).arrayBuffer());
+    if (localName.length !== entry.nameBytes.length || localName.some((byte, index) => byte !== entry.nameBytes[index])) fail('INVALID_ZIP', 'ZIP 文件名不一致。');
+    let stream = file.slice(start, start + entry.compressed).stream();
+    if (entry.method === 8) {
+      try { stream = stream.pipeThrough(new DecompressionStream('deflate-raw')); }
+      catch (_) { fail('ZIP_UNAVAILABLE', '当前浏览器暂不支持直接解压此 ZIP。请在“文件”App 解压，再选择导出.xml、export.xml 或其他健康主数据 XML。'); }
+    } else if (entry.compressed !== entry.uncompressed) fail('INVALID_ZIP', 'ZIP 文件大小不一致。');
+    return { stream, expectedSize: entry.uncompressed, expectedCrc: entry.crc };
+  }
+  async function hasHealthRoot(payload, signal) {
+    const reader = payload.stream.getReader(), decoder = new TextDecoder('utf-8', { fatal: true });
+    let prefix = '', bytes = 0;
+    const cancel = () => { reader.cancel().catch(() => {}); };
+    signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      for (;;) {
+        aborted(signal);
+        const result = await reader.read();
+        aborted(signal);
+        if (result.done) { prefix += decoder.decode(); return healthRootPrefix(prefix) === true; }
+        if (bytes + result.value.byteLength > payload.expectedSize) fail('INVALID_ZIP', 'ZIP 中 XML 的实际大小超过声明，请核对文件完整性。');
+        const take = Math.min(result.value.byteLength, LIMITS.zipProbeBytes - bytes);
+        prefix += decoder.decode(result.value.subarray(0, take), { stream: true });
+        bytes += take;
+        const match = healthRootPrefix(prefix);
+        if (match !== null) return match;
+        if (bytes >= LIMITS.zipProbeBytes) fail('ZIP_PROBE_LIMIT', 'ZIP 中 XML 的文件头过长，暂无法确认主数据文件。请解压后直接选择健康主数据 XML。');
+      }
+    } finally {
+      signal?.removeEventListener('abort', cancel);
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+  }
   async function zipPayload(file, signal) {
     aborted(signal);
     const tailStart = Math.max(0, file.size - 65557), tail = new Uint8Array(await file.slice(tailStart).arrayBuffer());
@@ -270,38 +332,37 @@
     if (view.getUint16(end + 4, true) !== 0 || view.getUint16(end + 6, true) !== 0 || view.getUint16(end + 8, true) !== count || count === 0xffff || size === 0xffffffff || offset === 0xffffffff) fail('UNSUPPORTED_ZIP', '暂不读取分卷或 ZIP64；请解压后选择 export.xml。');
     if (count > LIMITS.zipEntries || size > LIMITS.zipDirectoryBytes || offset + size > tailStart + end) fail('INVALID_ZIP', 'ZIP 目录过大或损坏，请解压后选择 export.xml。');
     const central = new Uint8Array(await file.slice(offset, offset + size).arrayBuffer()), directory = new DataView(central.buffer, central.byteOffset, central.byteLength);
-    let position = 0, target = null;
-    const decoder = new TextDecoder('utf-8', { fatal: true });
+    let position = 0;
+    const candidates = [];
+    // ZIP names may use a legacy encoding. ASCII suffix/path checks remain
+    // usable; compare local and central names as bytes, not decoded strings.
+    const decoder = new TextDecoder('utf-8');
     for (let i = 0; i < count; i++) {
       aborted(signal);
       if (position + 46 > central.length || directory.getUint32(position, true) !== 0x02014b50) fail('INVALID_ZIP', 'ZIP 目录损坏。');
       const nameLength = directory.getUint16(position + 28, true), extraLength = directory.getUint16(position + 30, true), commentLength = directory.getUint16(position + 32, true), next = position + 46 + nameLength + extraLength + commentLength;
       if (next > central.length) fail('INVALID_ZIP', 'ZIP 目录损坏。');
-      const name = decoder.decode(central.slice(position + 46, position + 46 + nameLength));
-      if (/(^|\/)export\.xml$/i.test(name)) {
-        if (target) fail('AMBIGUOUS_ZIP', 'ZIP 含有多个 export.xml，请解压后选择需要的那个文件。');
-        if (name.startsWith('/') || name.includes('\\') || name.split('/').some(part => part === '..')) fail('INVALID_ZIP', 'ZIP 中健康文件的路径无效。');
-        target = { flags: directory.getUint16(position + 8, true), method: directory.getUint16(position + 10, true), crc: directory.getUint32(position + 16, true), compressed: directory.getUint32(position + 20, true), uncompressed: directory.getUint32(position + 24, true), local: directory.getUint32(position + 42, true), name };
+      const nameBytes = central.slice(position + 46, position + 46 + nameLength), name = decoder.decode(nameBytes), parts = name.split('/');
+      const metadata = parts.some(part => part.toLowerCase() === '__macosx') || parts.at(-1).startsWith('._');
+      if (/\.xml$/i.test(name) && !metadata) {
+        if (name.startsWith('/') || name.includes('\\') || name.includes('\0') || parts.some(part => part === '..')) fail('INVALID_ZIP', 'ZIP 中健康文件的路径无效。');
+        if (candidates.length >= LIMITS.zipXmlCandidates) fail('TOO_MANY_XML_FILES', 'ZIP 中 XML 文件过多，无法自动确定主数据。请解压后直接选择健康主数据 XML。');
+        candidates.push({ flags: directory.getUint16(position + 8, true), method: directory.getUint16(position + 10, true), crc: directory.getUint32(position + 16, true), compressed: directory.getUint32(position + 20, true), uncompressed: directory.getUint32(position + 24, true), local: directory.getUint32(position + 42, true), nameBytes });
       }
       position = next;
     }
-    if (!target) fail('UNSUPPORTED_FILE', 'ZIP 中没有 Apple 健康的 export.xml。请从健康 App 重新导出。');
-    if (target.flags & 1) fail('UNSUPPORTED_ZIP', '无法读取加密 ZIP，请先解密并选择 export.xml。');
-    if (![0, 8].includes(target.method)) fail('UNSUPPORTED_ZIP', '此 ZIP 压缩方式不受支持，请解压后选择 export.xml。');
-    if (!target.uncompressed || target.uncompressed > LIMITS.xmlBytes || !target.compressed || target.uncompressed / target.compressed > LIMITS.compressionRatio) fail('FILE_TOO_LARGE', '健康 XML 超过安全读取范围，请减少导出范围或选择较小文件。');
-    if (target.local + 30 > offset) fail('INVALID_ZIP', 'ZIP 文件定位信息损坏。');
-    const localBytes = await file.slice(target.local, target.local + 30).arrayBuffer(), local = new DataView(localBytes);
-    if (local.getUint32(0, true) !== 0x04034b50 || local.getUint16(6, true) !== target.flags || local.getUint16(8, true) !== target.method) fail('INVALID_ZIP', 'ZIP 文件头不一致。');
-    const nameLength = local.getUint16(26, true), start = target.local + 30 + nameLength + local.getUint16(28, true);
-    if (start + target.compressed > offset) fail('INVALID_ZIP', 'ZIP 数据不完整。');
-    const localName = decoder.decode(await file.slice(target.local + 30, target.local + 30 + nameLength).arrayBuffer());
-    if (localName !== target.name) fail('INVALID_ZIP', 'ZIP 文件名不一致。');
-    let stream = file.slice(start, start + target.compressed).stream();
-    if (target.method === 8) {
-      try { stream = stream.pipeThrough(new DecompressionStream('deflate-raw')); }
-      catch (_) { fail('ZIP_UNAVAILABLE', '当前浏览器暂不支持直接解压此 ZIP。请在“文件”App 解压，再选择 export.xml。'); }
-    } else if (target.compressed !== target.uncompressed) fail('INVALID_ZIP', 'ZIP 文件大小不一致。');
-    return { stream, expectedSize: target.uncompressed, expectedCrc: target.crc };
+    let target = null;
+    for (const entry of candidates) {
+      aborted(signal);
+      const payload = await openZipEntry(file, entry, offset, true);
+      if (await hasHealthRoot(payload, signal)) {
+        if (target) fail('AMBIGUOUS_ZIP', 'ZIP 含有多个 Apple 健康主数据 XML，请解压后选择需要的那个文件。');
+        target = entry;
+      }
+    }
+    if (!target) fail('UNSUPPORTED_FILE', 'ZIP 中未找到 Apple 健康主数据 XML。请解压后选择导出.xml、export.xml 或其他健康主数据 XML；不要选择 CDA 辅助文件。');
+    aborted(signal);
+    return openZipEntry(file, target, offset, false);
   }
 
   async function readFile(file, options) {

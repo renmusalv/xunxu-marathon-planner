@@ -162,7 +162,7 @@
     <header class="health-dialog-head"><div><span class="section-kicker">HEALTH DATA</span><h2 id="healthDialogTitle">用真实记录，了解你的准备度</h2><p>当前档案：<strong id="healthOwner"></strong></p></div><button type="button" id="closeHealthDialog" class="icon-button" aria-label="关闭健康数据窗口">×</button></header>
     <div class="health-dialog-content">
       <div class="health-access-note"><strong>Apple 健康 · 文件导入</strong><p>当前网页版支持导入健康文件。iPhone「健康」和 Android Health Connect 的直接系统授权，需要原生 App。</p></div>
-      <div class="health-import-guide"><h3>如何取得健康文件</h3><ol><li>打开 iPhone「健康」→ 摘要 → 右上角头像。</li><li>选择「导出所有健康数据」，存储到「文件」。</li><li>回到这里选择导出的 ZIP，或解压后的 export.xml。</li></ol><a href="https://support.apple.com/zh-cn/guide/iphone/iph5ede58c3d/ios" target="_blank" rel="noreferrer">Apple 官方导出说明 ↗</a></div>
+      <div class="health-import-guide"><h3>如何取得健康文件</h3><ol><li>打开 iPhone「健康」→ 摘要 → 右上角头像。</li><li>选择「导出所有健康数据」，存储到「文件」。</li><li>选择导出的 ZIP 即可，无需改名；也支持解压后的导出.xml、export.xml 或其他健康主数据 XML。</li></ol><a href="https://support.apple.com/zh-cn/guide/iphone/iph5ede58c3d/ios" target="_blank" rel="noreferrer">Apple 官方导出说明 ↗</a></div>
       <button type="button" class="health-choose" id="healthChooseFile"><span aria-hidden="true">＋</span> 选择健康文件 <small>ZIP / XML</small></button><input type="file" id="healthFile" accept=".zip,.xml,application/zip,application/xml,text/xml" hidden />
       <p class="health-privacy">只分析跑步训练、静息心率和 VO₂max。原始文件在当前浏览器中读取，不上传；不读取定位轨迹、医疗记录、睡眠等无关内容。</p>
       <p class="health-status" id="healthStatus" role="status">选择文件后，先查看摘要再决定应用哪些数据。</p><progress id="healthReadProgress" aria-label="读取健康文件" hidden></progress>

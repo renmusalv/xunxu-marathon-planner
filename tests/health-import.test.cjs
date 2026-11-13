@@ -149,7 +149,7 @@ test('ZIP corruption, encryption, path attacks, missing export and over-sized de
   await assert.rejects(Health.readFile(zip(source, { badCrc: true }), { now }), e => e.code === 'INVALID_ZIP');
   await assert.rejects(Health.readFile(zip(source, { flags: 1 }), { now }), e => e.code === 'UNSUPPORTED_ZIP');
   await assert.rejects(Health.readFile(zip(source, { name: '../export.xml' }), { now }), e => e.code === 'INVALID_ZIP');
-  await assert.rejects(Health.readFile(zip(source, { name: 'export_cda.xml' }), { now }), e => e.code === 'UNSUPPORTED_FILE');
+  await assert.rejects(Health.readFile(zip('<?xml version="1.0"?><ClinicalDocument/>', { name: 'export_cda.xml' }), { now }), e => e.code === 'UNSUPPORTED_FILE');
   await assert.rejects(Health.readFile(zip(source, { size: Health.limits.xmlBytes + 1 }), { now }), e => e.code === 'FILE_TOO_LARGE');
   const cut = zip(source); await assert.rejects(Health.readFile(cut.slice(0, cut.size - 8), { now }), e => e.code === 'INVALID_ZIP');
 });
