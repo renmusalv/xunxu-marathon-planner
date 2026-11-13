@@ -89,7 +89,7 @@
       $('healthOwner').textContent = context.profileName || '当前档案';
       $('healthReview').hidden = !report; $('healthReadProgress').hidden = true; error('');
       $('healthFile').value = ''; $('healthChooseFile').disabled = false;
-      $('healthStatus').textContent = '选择 Apple 健康导出的 ZIP，或解压后的 export.xml。';
+      $('healthStatus').textContent = '支持中英文文件名；选择健康 ZIP，或解压后的导出.xml / export.xml。';
       $('healthDataDestination').textContent = savedText();
       if (report) renderReport();
       if (!dialog.open) dialog.showModal();
