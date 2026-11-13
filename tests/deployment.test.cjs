@@ -7,11 +7,13 @@ const vm = require('node:vm');
 const {buildStatic, readPublicConfig} = require('../scripts/build-static.cjs');
 
 const root = path.resolve(__dirname, '..');
-const emptyConfig = "window.XUNXU_CONFIG = {supabaseUrl:'',supabasePublishableKey:'',emailLoginEnabled:false};\n";
+const emptyConfig = "window.XUNXU_CONFIG = {supabaseUrl:'',supabasePublishableKey:'',emailLoginEnabled:false,sharedLoginEmail:'',passwordLoginEnabled:false};\n";
 const publicEnvironment = {
   SUPABASE_URL: 'https://example-project.supabase.co/',
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test_fixture_only',
   EMAIL_LOGIN_ENABLED: 'true',
+  SHARED_LOGIN_EMAIL: 'shared@example.com',
+  PASSWORD_LOGIN_ENABLED: 'true',
 };
 
 function listFiles(directory, prefix = '') {
@@ -87,6 +89,8 @@ test('full static build includes local SDK/OCR assets and excludes old landing p
     const generated = {window: {}};
     vm.runInNewContext(fs.readFileSync(path.join(built.output, 'cloud-config.js'), 'utf8'), generated);
     assert.equal(generated.window.XUNXU_CONFIG.emailLoginEnabled, false);
+    assert.equal(generated.window.XUNXU_CONFIG.sharedLoginEmail, '');
+    assert.equal(generated.window.XUNXU_CONFIG.passwordLoginEnabled, false);
     assert.equal(generated.window.XUNXU_CONFIG.supabaseUrl, '');
     assert.equal(generated.window.XUNXU_CONFIG.supabasePublishableKey, '');
     assert.deepEqual(fs.readFileSync(path.join(root, 'src/cloud-config.js')), trackedConfigBefore);
@@ -103,6 +107,8 @@ test('public environment configuration overrides only the generated config and n
       supabaseUrl: 'https://example-project.supabase.co',
       supabasePublishableKey: 'sb_publishable_test_fixture_only',
       emailLoginEnabled: true,
+      sharedLoginEmail: 'shared@example.com',
+      passwordLoginEnabled: true,
     });
     assert.doesNotMatch(JSON.stringify(config), /never-publish|service_role/i);
     assert.deepEqual(fs.readFileSync(source), before);
@@ -111,7 +117,7 @@ test('public environment configuration overrides only the generated config and n
 
 test('unconfigured trial builds are valid while secret keys and misleading enabled configuration are rejected', () => {
   withConfig(source => {
-    assert.deepEqual(readPublicConfig(source, {}), {supabaseUrl: '', supabasePublishableKey: '', emailLoginEnabled: false});
+    assert.deepEqual(readPublicConfig(source, {}), {supabaseUrl: '', supabasePublishableKey: '', emailLoginEnabled: false, sharedLoginEmail: '', passwordLoginEnabled: false});
     assert.equal(readPublicConfig(source, {...publicEnvironment, EMAIL_LOGIN_ENABLED: 'false'}).emailLoginEnabled, false);
     for (const key of [
       'sb_secret_do_not_publish',
@@ -131,7 +137,7 @@ test('Pages pipeline tests and builds the public planner before uploading only d
   assert.ok(positions.every(position => position >= 0));
   assert.deepEqual([...positions].sort((a,b) => a-b), positions);
   assert.match(workflow, /uses: actions\/upload-pages-artifact@v4\s+with:\s+path: dist(?:\r?\n|$)/);
-  for (const name of ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'EMAIL_LOGIN_ENABLED']) {
+  for (const name of ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'EMAIL_LOGIN_ENABLED', 'SHARED_LOGIN_EMAIL', 'PASSWORD_LOGIN_ENABLED']) {
     assert.ok(workflow.includes(name + ': ' + '$' + '{{ vars.' + name + ' }}'));
   }
   assert.doesNotMatch(workflow, /path:\s*(?:pages-entry|\.|cloud-source\.zip)\s*$/m);
