@@ -1,0 +1,82 @@
+/* Keep preparation, today's course and optional analysis at separate levels. */
+.workspace-tabs,.mobile-plan-status{display:none}
+.section-kicker{display:block;color:#78905a;font-size:10px;font-weight:750;letter-spacing:.06em;margin-bottom:6px}
+.next-race-intro{padding:12px 13px;border:1px solid #e2e9d6;border-radius:11px;background:#f3f6ec;margin-bottom:18px}
+.next-race-intro h3{margin:0 0 5px}.next-race-intro p{margin:0}
+.plan-insights,.plan-explanation{border:0;min-width:0}
+.plan-insights>summary,.plan-explanation>summary{display:none}
+.course-schedule{min-width:0}
+.profile-help{font-size:11px;line-height:1.7;color:#7d8872;margin-top:12px}
+.profile-help>summary{cursor:pointer;min-height:32px;padding:7px 0}
+.profile-actions .generate{min-height:46px}
+[id^=panel-],.field input,.field select{scroll-margin-top:85px}
+
+@media(max-width:900px){
+  .shell{padding:0 12px 24px;max-width:700px}
+  .topbar{padding:14px 3px 12px;margin:0;min-height:52px}
+  .brand{font-size:17px}.brand-mark{width:27px;height:27px;font-size:23px}
+  .brand>span>span{font-size:9px;letter-spacing:.04em}
+  .top-meta,.intro{display:none}
+  .workspace-tabs{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:7px;background:#f4f4ec;border-bottom:1px solid #e1e6d8;box-shadow:0 3px 12px #203c1c08;isolation:isolate;scroll-margin-top:0}
+  .workspace-tabs button{min-height:44px;border:0;border-radius:10px;background:transparent;color:#798470;font:inherit;font-size:15px;font-weight:650}
+  .workspace-tabs button[aria-selected=true]{background:var(--ink);color:#fff;box-shadow:0 3px 8px #17372c1a}
+  .workspace-tabs[hidden]{display:none}
+  #workspaceShell[data-workspace-view=profile] #planWorkspace,#workspaceShell[data-workspace-view=schedule] #plannerForm{display:none}
+  .cloud-banner{flex-direction:row;align-items:center;gap:8px;margin:10px 0;padding:9px 10px;border-radius:10px}
+  .cloud-status-copy{gap:0;flex:1;min-width:0}.cloud-symbol{display:none}
+  .cloud-status-copy strong{font-size:10px;line-height:1.5}.cloud-status-copy small{font-size:9px;line-height:1.5;margin-top:1px}
+  .cloud-actions{width:auto;flex:0 0 auto;max-width:42%;gap:5px}
+  .cloud-actions button{min-height:36px;padding:6px 8px;font-size:10px;line-height:1.3}
+  .layout{display:block;margin-top:0}
+  #plannerForm{position:static;max-height:none;overflow:visible;padding:17px 16px;border-radius:14px}
+  .panel-head{margin-bottom:12px}.panel-head h2{font-size:17px}.panel-head .step{display:none}
+  .profile-field{margin-bottom:13px}.profile-field>label{font-size:11px;margin-bottom:5px}.profile-field small{font-size:10px;line-height:1.5}
+  .profile-row select,.profile-row button{min-height:44px}
+  .setup-tabs{margin-bottom:17px;gap:2px;padding:4px}
+  .setup-tabs button{font-size:12px;min-height:42px;padding:8px 3px;white-space:nowrap}
+  .section-intro h3{font-size:16px}.section-intro p{font-size:12px;line-height:1.65}
+  .next-race-intro{padding:11px 12px;margin-bottom:17px}.next-race-intro p{font-size:11px}.next-race-intro .section-kicker{display:none}
+  .field{margin-bottom:17px}.field>label{font-size:13px;margin-bottom:7px;font-weight:650}
+  .field input,.field select{min-height:46px;min-width:0;font-size:16px}
+  .field small,.field-note{font-size:11px;line-height:1.6}
+  .setup-guide{font-size:11px;line-height:1.65;margin:0 0 10px}
+  .record-nudge{padding:12px 10px;margin-bottom:0}.record-nudge strong{font-size:12px}.record-nudge small{font-size:10px}.record-nudge .nudge-icon{display:none}
+  .training-nudge{padding:12px 0 8px;min-height:44px;font-size:12px}
+  .hintline{display:none}
+  .profile-actions{margin-top:15px;padding-top:11px;border-top:1px solid #e3e8db}
+  .profile-actions .generate{min-height:48px;font-size:14px}
+  .profile-actions .fineprint{font-size:10px;line-height:1.6;margin:8px 0 0}
+  .profile-help{margin-top:8px}.profile-help>summary{font-size:11px;min-height:36px}
+  .work{display:flex;flex-direction:column;border-radius:14px;overflow:hidden}
+  .work[hidden]{display:none}
+  .work>.summary{order:0;padding:16px 16px 12px;grid-template-columns:minmax(0,1fr) auto;gap:10px;border-bottom:0}
+  .summary h2{font-size:17px;line-height:1.45;margin-top:5px}.summary-label{font-size:9px}
+  .summary-copy{font-size:10px;line-height:1.5;margin-top:4px}.time-block strong{font-size:23px;white-space:nowrap}.time-block span{font-size:9px}
+  .mobile-plan-status{display:block;order:1;margin:0 13px 10px;padding:8px 10px;background:#f1f5e8;border:1px solid #e2e9d8;border-radius:9px;color:#667954;font-size:11px;line-height:1.65}
+  .mobile-plan-status[data-level=hold],.mobile-plan-status[data-level=error]{background:#fbefe4;border-color:#e9d4b7;color:#915333}
+  .mobile-plan-status[data-level=high],.mobile-plan-status[data-level=challenge]{background:#f8f1df;border-color:#e9dfbd;color:#85682d}
+  .work>.course-schedule{order:2}
+  .course-schedule>.phase-row,.course-schedule>.schedule-head{display:none}
+  .plan-insights{order:3;border:1px solid #e1e6da;border-radius:11px;margin:2px 13px 12px;background:#fafbf6;overflow:hidden}
+  .plan-explanation{order:4;border-top:1px solid #edf0e6;margin:0 13px 8px}
+  .plan-insights>summary,.plan-explanation>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;padding:13px 12px;min-height:48px;font-size:12px;font-weight:650;color:#546b46;list-style:none}
+  .plan-insights>summary::-webkit-details-marker,.plan-explanation>summary::-webkit-details-marker{display:none}
+  .plan-insights>summary::after,.plan-explanation>summary::after{content:'＋';font-size:16px;font-weight:400;flex:0 0 auto}
+  .plan-insights[open]>summary::after,.plan-explanation[open]>summary::after{content:'−'}
+  #planInsightStatus{font-size:10px;font-weight:400;color:#849174;margin-left:auto}
+  .plan-insights .metrics{grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid #e2e7dc}
+  .plan-insights .metric{padding:10px 12px}.plan-insights .metric:last-child{grid-column:1/-1}
+  .plan-insights .notice{margin:10px;font-size:11px;line-height:1.7}
+  .plan-insights .ability-panel,.plan-insights .risk-assessment,.plan-insights .template-panel{margin:10px;padding:12px;background:#fffefa}
+  .plan-insights .ability-stats{gap:8px}.plan-insights .ability-stats strong{font-size:20px}.plan-insights .ability-stats .method-label{font-size:13px}
+  .plan-insights .prescription-grid{grid-template-columns:1fr 1fr;gap:7px}
+  .plan-insights .risk-heading{align-items:flex-start;flex-wrap:wrap}
+  .plan-insights .risk-factors{grid-template-columns:1fr 1fr}
+  .plan-explanation .method{padding:0 0 12px;gap:8px}.plan-explanation .source{padding:11px 0;font-size:10px}
+  .record-dialog{max-height:calc(100dvh - 20px);width:calc(100% - 20px)}
+  .record-review-fields .split:has(#recordTime){grid-template-columns:1fr}
+  .legacy-entry .split:has(#benchmarkTime){grid-template-columns:1fr}
+  .trial-import{margin:0 0 10px}
+}
+
+@media(prefers-reduced-motion:reduce){.workspace-tabs *{scroll-behavior:auto}}
