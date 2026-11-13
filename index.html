@@ -67,13 +67,13 @@
       <button type="button" id="view-schedule" role="tab" data-view="schedule" aria-controls="planWorkspace" aria-selected="false" tabindex="-1">课程安排</button>
     </nav>
     <section class="cloud-banner" id="cloudBanner" data-state="guest" aria-label="档案保存状态">
-      <div class="cloud-status-copy"><span class="cloud-symbol" aria-hidden="true">☁</span><div><strong id="cloudState" role="status">公开试用 · 无需 ChatGPT 账号</strong><small id="cloudDetail"><span id="cloudIdentity">试用资料仅在当前页面</span><span id="cloudStorageHint"> · 登录邮箱后可保存到云端</span></small></div></div>
-      <div class="cloud-actions"><button type="button" id="cloudRetry" hidden>重试保存</button><button type="button" id="cloudReload" hidden>重新读取云端</button><button type="button" id="cloudSignIn">邮箱登录保存</button><button type="button" id="cloudSignOut" hidden>退出账号</button></div>
+      <div class="cloud-status-copy"><span class="cloud-symbol" aria-hidden="true">☁</span><div><strong id="cloudState" role="status">公开试用 · 无需 ChatGPT 账号</strong><small id="cloudDetail"><span id="cloudIdentity">试用资料仅在当前页面</span><span id="cloudStorageHint"> · 登录后可保存到服务器</span></small></div></div>
+      <div class="cloud-actions"><button type="button" id="cloudRetry" hidden>重试保存</button><button type="button" id="cloudReload" hidden>重新读取服务器</button><button type="button" id="cloudSignIn">登录并同步</button><button type="button" id="cloudSignOut" hidden>退出账号</button></div>
     </section>
     <section class="trial-import" id="trialImport" hidden aria-label="保存登录前的试用资料"><div><strong>登录前的试用资料仍在当前页面</strong><p>可另存为新的云端档案，现有档案不会被覆盖。</p></div><div class="trial-import-actions"><select id="trialProfileSelect" aria-label="选择要保存的试用档案"></select><button type="button" id="importTrialButton">保存试用档案</button></div><p class="form-error" id="trialImportError" role="alert" hidden></p></section>
     <div class="layout" id="customPlan">
       <form id="plannerForm" class="panel" aria-label="计划设置" novalidate><div class="panel-head"><h2>你的训练档案</h2><span class="step">01 — SETUP</span></div>
-        <div class="profile-field"><label for="profileSelect">当前训练档案</label><div class="profile-row"><select id="profileSelect" aria-label="切换训练档案"></select><button id="addProfileButton" type="button" class="profile-add">＋ 新档案</button></div><small id="profileStorageHint">各试用档案相互独立；登录邮箱后可另存到云端。</small></div>
+        <div class="profile-field"><label for="profileSelect">当前训练档案</label><div class="profile-row"><select id="profileSelect" aria-label="切换训练档案"></select><button id="addProfileButton" type="button" class="profile-add">＋ 新档案</button></div><small id="profileStorageHint">各试用档案相互独立；登录后可另存到服务器。</small></div>
         <div class="setup-tabs" role="tablist" aria-label="档案资料分类">
           <button type="button" role="tab" id="tab-race" aria-controls="panel-race" aria-selected="true" data-tab="race">下场比赛</button>
           <button type="button" role="tab" id="tab-records" aria-controls="panel-records" aria-selected="false" tabindex="-1" data-tab="records">历史成绩 <span id="recordCount">0</span></button>
@@ -129,7 +129,7 @@
         </div>
         <p id="storageStatus" class="storage-status" role="status" hidden></p>
         <div class="hintline"><strong id="goalTimeHint">目标配速与完赛时间会自动换算。</strong>轻松跑以能完整交谈的体感为准。</div>
-        <div class="profile-actions"><button class="generate" id="generate" type="submit">生成并查看课程安排 <span aria-hidden="true">↗</span></button><p id="generationStatus" class="fineprint" role="status">设定目标即可查看课表；补充成绩后显示个人难度与建议。</p></div><details class="profile-help"><summary>资料保存与使用说明</summary><p class="fineprint">试用资料只在当前页面暂存，刷新或关闭后会丢失。邮箱登录后，资料修改自动保存到云端；浏览器只保留登录凭据，不保存训练资料。</p><p class="fineprint">计划是训练参考，不替代教练或医疗建议。若持续疼痛、胸闷、眩晕或不适，请停止训练并寻求专业评估。</p></details>
+        <div class="profile-actions"><button class="generate" id="generate" type="submit">生成并查看课程安排 <span aria-hidden="true">↗</span></button><p id="generationStatus" class="fineprint" role="status">设定目标即可查看课表；补充成绩后显示个人难度与建议。</p></div><details class="profile-help"><summary>资料保存与使用说明</summary><p class="fineprint">试用资料只在当前页面暂存，刷新或关闭后会丢失。登录后，资料修改自动保存到服务器；浏览器只保留登录凭据，不保存训练资料。</p><p class="fineprint">计划是训练参考，不替代教练或医疗建议。若持续疼痛、胸闷、眩晕或不适，请停止训练并寻求专业评估。</p></details>
       </form>
       <section class="work" id="planWorkspace" aria-label="课程安排"><div class="summary"><div><div class="summary-label">下一场目标比赛</div><h2 id="summaryTitle">训练计划</h2><div class="summary-copy" id="summaryCopy">按目标安排每周课程</div></div><div class="time-block"><strong id="finishTime">—</strong><span>目标完赛时间</span></div></div>
         <div class="mobile-plan-status" id="mobilePlanStatus" role="status">完成难度待评估 · 可先查看目标课表</div>
@@ -207,13 +207,15 @@
     </form>
   </dialog>
   <dialog id="loginDialog" class="login-dialog" aria-labelledby="loginTitle">
-    <header class="login-head"><div><div class="eyebrow">YOUR TRAINING, ANYWHERE</div><h2 id="loginTitle">用邮箱保存训练档案</h2></div><button type="button" id="closeLoginDialog" class="icon-button" aria-label="关闭邮箱登录">×</button></header>
-    <p class="login-intro">无需 ChatGPT 账号。验证邮箱后，个人资料、成绩截图和打卡可自动保存，并在其他设备继续使用。</p>
-    <div id="loginUnavailable" class="login-unavailable" hidden><strong>邮箱云服务正在接入</strong><p>目前可以公开试用全部课表与能力评估。试用资料仅在当前页面，刷新或关闭后会丢失；云服务开通后，即可通过邮箱验证保存资料。</p><a href="https://xunxu-marathon-planner.smart-bean-0955.chatgpt.site/planner/index.html" target="_blank" rel="noopener noreferrer">查看原有云端档案 ↗</a><small>原有入口仍使用原账号登录，已有资料保留在那里。</small></div>
-    <form id="sendCodeForm" class="login-form"><label for="loginEmail">邮箱地址</label><input id="loginEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" maxlength="254" required /><button type="submit" id="sendCodeButton" class="primary-button">发送验证码</button></form>
+    <header class="login-head"><div><div class="eyebrow">YOUR TRAINING, ANYWHERE</div><h2 id="loginTitle">登录并同步训练档案</h2></div><button type="button" id="closeLoginDialog" class="icon-button" aria-label="关闭登录窗口">×</button></header>
+    <p class="login-intro">登录后会优先读取服务器上的档案。新建档案和后续修改会自动保存，其他设备使用相同账号即可继续使用。</p>
+    <div id="loginUnavailable" class="login-unavailable" hidden><strong>云端保存尚未接通</strong><p>目前可以试用课表与能力评估。完成服务器配置后，密码登录、邮箱登录和跨设备同步即可使用。</p><a href="https://xunxu-marathon-planner.smart-bean-0955.chatgpt.site/planner/index.html" target="_blank" rel="noopener noreferrer">查看原有云端档案 ↗</a><small>原有入口仍使用原账号登录，已有资料保留在那里。</small></div>
+    <form id="passwordLoginForm" class="login-form" hidden><label for="loginPassword">共享密码</label><input id="loginPassword" type="password" autocomplete="current-password" inputmode="numeric" maxlength="128" required /><button type="submit" id="passwordLoginButton" class="primary-button">登录并读取服务器档案</button></form>
+    <p class="login-divider" id="loginDivider" hidden>也可以使用邮箱验证码登录</p>
+    <form id="sendCodeForm" class="login-form" hidden><label for="loginEmail">邮箱地址</label><input id="loginEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" maxlength="254" required /><button type="submit" id="sendCodeButton" class="primary-button">发送验证码</button></form>
     <form id="verifyCodeForm" class="login-form" hidden><label for="loginCode">邮箱验证码</label><input id="loginCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" minlength="6" maxlength="10" placeholder="输入邮件中的验证码" required /><small id="codeEmailHint"></small><button type="submit" id="verifyCodeButton" class="primary-button">验证并登录</button></form>
     <p id="loginMessage" class="login-message" role="status" hidden></p>
-    <p class="login-footnote">验证码只用于登录。登录前的试用资料会保留，是否上传由你选择。</p>
+    <p class="login-footnote">使用共享密码登录的设备共用同一组云端档案；邮箱登录保留各账号独立资料。登录前的试用资料仍保留在当前页面，可选择另存到服务器。</p>
     <button type="button" id="continueTrialButton" class="secondary-button login-continue">继续试用</button>
   </dialog>
   <div class="toast" id="toast" role="status" hidden></div>

@@ -1,8 +1,8 @@
-# 循序 · 公开训练计划与邮箱云档案
+# 循序 · 公开训练计划与云档案
 
 [打开完整训练计划](https://renmusalv.github.io/xunxu-marathon-planner/)
 
-GitHub Pages 直接提供完整课表、成绩图片识别、个人资料与目标能力评估页面。访问与试用不需要 ChatGPT 账号。邮箱验证码登录和跨设备云保存使用独立的 Supabase 项目，需要完成下述服务配置后才能启用。
+GitHub Pages 直接提供完整课表、成绩图片识别、个人资料与目标能力评估页面。访问与试用不需要 ChatGPT 账号。邮箱验证码登录和共享密码登录都使用 Supabase 云档案；共享密码登录下，使用同一密码的设备访问同一个 Supabase 账号和同一组档案。
 
 ## 课表与资料填写
 
@@ -45,7 +45,7 @@ ZIP 会按实际 XML 根节点 `HealthData` 识别主数据，而非锁定英文
 - 只统计跑步训练，合并近似重复的设备记录。已记录数据不等于完整训练史，因此应用周跑量和频率前，需要确认记录完整；周均天数有小数时由用户确认常态，不擅自四舍五入。
 - 可读取有日期、来源的静息心率与 VO₂max。导入 VO₂max 的测量方式默认「待确认」，不假定一定来自手表或实验室。心率峰值不自动填入个人最大心率，设备 VO₂max 不直接改变准备度评分。
 - 接近 10 km / 半马的历史跑步作为候选线索，可回填日期、实际记录距离提示、用时、记录内平均 / 最高心率。只有用户核对比赛性质、标准距离与完整计时后，才进入现有能力评估规则；普通训练不能自动当作全力比赛。
-- 文件和解压后的 XML 上限各 256 MiB；ZIP 仅支持普通 stored / deflate、未加密、非 ZIP64 的 Apple 导出包。验证 CRC、大小和压缩比。不支持 `DecompressionStream('deflate-raw')` 的浏览器会提示先解压选择 XML。
+- 不再设置 256 MiB 文件大小上限；文件在浏览器本机流式读取，不上传原始 ZIP/XML。ZIP 仍仅支持普通 stored / deflate、未加密、非 ZIP64 的 Apple 导出包，并验证 CRC、大小和压缩比；实际可读范围受浏览器、设备内存和 ZIP 格式限制。不支持 `DecompressionStream('deflate-raw')` 的浏览器会提示先解压选择 XML。
 - 解析、应用和候选成绩均绑定当前账号与档案；切换档案取消未完成读取，账号变化清空导入摘要。原始文件不保留，取消或失败不会把未核对记录当作已应用数据。
 
 官方依据：[Apple HealthKit 配置](https://developer.apple.com/documentation/healthkit/setting-up-healthkit) · [Android Health Connect 集成](https://developer.android.com/health-and-fitness/health-connect/get-started) · [Apple 健康导出说明](https://support.apple.com/guide/iphone/share-your-health-data-iph5ede58c3d/ios)。
@@ -60,21 +60,23 @@ ZIP 会按实际 XML 根节点 `HealthData` 识别主数据，而非锁定英文
 window.XUNXU_CONFIG = {
   supabaseUrl: '',
   supabasePublishableKey: '',
-  emailLoginEnabled: false
+  emailLoginEnabled: false,
+  sharedLoginEmail: '',
+  passwordLoginEnabled: false
 };
 ```
 
-默认状态可公开试用训练计划。试用的资料、截图与打卡只保留在当前页面内存中，刷新或关闭页面后不保留；页面会说明云服务尚未接通。空配置不会发送验证码，不会把试用结果显示为已保存到云端，也不会回退到浏览器本机业务存储。
+默认状态可公开试用训练计划。试用的资料、截图与打卡只保留在当前页面内存中，刷新或关闭页面后不保留；页面会说明云服务尚未接通。空配置不会启用登录，不会把试用结果显示为已保存到服务器，也不会回退到浏览器本机业务存储。
 
-只有配置真实 Supabase 项目、应用数据库与图片权限、接通邮件服务并验证验证码登录之后，才应设置 `emailLoginEnabled: true`。一次静态构建成功只证明网站资源能够生成，不证明邮件投递或云保存已经可用。
+配置真实 Supabase 项目、数据库与图片权限，并验证相应认证方式和云保存后，才应启用登录开关。一次静态构建成功只证明网站资源能够生成，不证明登录或云保存已经可用。
 
 ## 代码与发布结构
 
 | 路径 | 用途 |
 | --- | --- |
 | `index.html`、`src/` | 当前完整公开应用的可维护源代码 |
-| `src/cloud-config.js` | 可公开的项目 URL、公钥和邮箱登录开关 |
-| `src/supabase-cloud.js` | 独立邮箱认证与 Supabase 云端适配 |
+| `src/cloud-config.js` | 可公开的项目 URL、公钥、邮箱验证码与共享密码登录开关、共享账号邮箱 |
+| `src/supabase-cloud.js` | Supabase 邮箱验证码 / 共享密码认证与云端适配 |
 | `src/profile-store.js` | 当前页面草稿、档案状态与保存流程 |
 | `src/assessment.js`、`src/target-plan.js`、`src/session-advice.js` | 能力评估、目标课表及个人能力旁注 |
 | `src/ocr.js` | 浏览器内图片处理、OCR 与成绩字段提取 |
@@ -82,7 +84,7 @@ window.XUNXU_CONFIG = {
 | `scripts/vendor-cloud.cjs` | 从锁定的官方 npm 包生成本地 Supabase 浏览器 SDK |
 | `scripts/vendor-ocr.cjs` | 从锁定依赖生成 OCR 引擎、worker、内嵌 WebAssembly 内核和中英文模型 |
 | `supabase/migrations/202611110001_cloud_profiles.sql` | 数据表、访问隔离与图片相关的服务端迁移 |
-| `supabase/email-template.html`、`supabase/README.md` | 邮箱验证码模板与后端配置说明 |
+| `supabase/README.md` | 后端账号、数据库和图片权限配置说明 |
 | `tests/` | 目标课表、能力评估、档案、云适配、数据库权限和发布边界回归 |
 | `.github/workflows/deploy.yml` | 安装依赖、测试、构建后，将 `dist/` 发布到 Pages |
 
@@ -105,27 +107,23 @@ python3 -m http.server 8000 --directory dist
 
 测试中的发布检查会在临时目录生成完整静态产物，验证旧入口、服务器包、源码 ZIP 和本机配置不会混入网站。数据库测试使用本地测试环境；它们不会替代真实 Supabase 项目的配置和投递验证。
 
-## 接通独立邮箱登录与云保存
+## 接通邮箱验证码 / 共享密码登录与云保存
 
 ### 1. 创建并配置 Supabase 项目
 
-在你控制的 Supabase 项目中，按 [supabase/README.md](supabase/README.md) 应用 [数据库迁移](supabase/migrations/202611110001_cloud_profiles.sql) 并检查私有图片桶及访问策略。用户身份应来自 Supabase Auth，数据库和图片访问由服务端权限控制；不要依赖前端提供的用户 ID 来授权。
+在你控制的 Supabase 项目中，按 [supabase/README.md](supabase/README.md) 应用 [数据库迁移](supabase/migrations/202611110001_cloud_profiles.sql) 并检查私有图片桶及访问策略。密码校验由 Supabase Auth 完成；数据库和图片访问由服务端权限控制，不依赖前端提供的用户 ID 来授权。
 
 从 Supabase 项目连接信息中获取项目 URL 与 **publishable key**。当前构建只接受 `sb_publishable_` 开头的公开密钥。`sb_secret_`、`service_role` 和其他服务器凭据不能进入前端、仓库或 Pages 产物；构建会拒绝将它们作为发布公钥。
 
 官方说明：[Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys)。
 
-### 2. 配置公开邮件投递与验证码模板
+### 2. 创建共享登录账号
 
-启用邮箱认证，并在 Supabase Auth 中配置自己的 SMTP 邮件服务。Supabase 默认测试邮件服务只向项目团队中的预授权地址投递，不能作为面向所有访客的邮箱登录服务。SMTP 主机、用户名、密码等只配置在 Supabase 服务端，不写进本仓库或 GitHub Actions 的公开变量。
+在 Supabase Auth 中使用现有的已确认账号作为共享账号，并为它设置网页登录密码。若要保留该账号当前的服务器资料，`SHARED_LOGIN_EMAIL` 必须指向拥有这些资料的同一个 Supabase 用户；新建另一个用户不会自动迁移旧档案。不要把密码写进源码或构建变量。所有登录者会共用该账号下的档案、成绩、截图和打卡。
 
-将 [supabase/email-template.html](supabase/email-template.html) 用于相应的登录邮件模板。邮箱验证码模板需要包含 `{{ .Token }}`；仅调用 `signInWithOtp` 而保留默认邮件模板，收到的可能是登录链接。网站使用用户输入验证码并验证邮箱的方式登录。
+共享密码登录使用 Supabase Auth 的密码认证，不发送验证码；共享密码会由 Supabase Auth 私下校验，不能写入源码、仓库变量或网页配置。邮箱验证码登录继续使用各自的 Supabase 用户和独立档案，需配置 Email OTP 与邮件投递服务。
 
-在 Supabase URL 设置中填写本网站地址 `https://renmusalv.github.io/xunxu-marathon-planner/`，并按需要登记实际使用的本地测试地址。完成一次真实的验证码发送、收取、验证及云保存/读取测试后，再打开公开邮箱登录开关。
-
-官方说明：[自定义 SMTP](https://supabase.com/docs/guides/auth/auth-smtp) · [邮箱 OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless)。
-
-### 3. 设置三个公开配置值
+### 3. 设置公开配置值
 
 推荐在 GitHub 仓库 **Settings → Secrets and variables → Actions → Variables** 中设置：
 
@@ -133,11 +131,13 @@ python3 -m http.server 8000 --directory dist
 | --- | --- |
 | `SUPABASE_URL` | `https://你的项目标识.supabase.co`，使用 HTTPS 项目根地址 |
 | `SUPABASE_PUBLISHABLE_KEY` | 项目提供的 `sb_publishable_…` 公钥 |
-| `EMAIL_LOGIN_ENABLED` | 未完成服务验证时保持 `false`；确认邮箱与云保存可用后设置 `true` |
+| `EMAIL_LOGIN_ENABLED` | 启用邮箱验证码登录时设为 `true`，否则设为 `false` |
+| `SHARED_LOGIN_EMAIL` | 上一步创建的共享 Supabase Auth 账号邮箱 |
+| `PASSWORD_LOGIN_ENABLED` | 完成共享账号与云保存验证后设为 `true`，否则保持 `false` |
 
 这些值会公开出现在浏览器中，不是服务器秘密。也可编辑 `src/cloud-config.js` 中对应的公开字段作为默认配置。非空环境变量优先于源码默认值，构建只改写 `dist/cloud-config.js`，不会改动受版本控制的配置文件。
 
-`EMAIL_LOGIN_ENABLED` 只接受 `true` 或 `false`。空配置与 `false` 可以正常构建试用版；显式开启登录却缺少项目 URL 或公钥时，构建会停止，避免发布误导性的登录状态。
+两个登录开关只接受 `true` 或 `false`。空配置与 `false` 可以正常构建试用版；启用任一登录方式却缺少项目 URL 或公钥，或启用密码登录却缺少共享账号邮箱时，构建会停止，避免发布误导性的登录状态。
 
 设置变量后，手动运行 GitHub Actions 的 **Test and deploy public planner** 生成新发布版本。仅修改仓库变量不会改写已经发布的静态文件。
 
@@ -155,7 +155,7 @@ npm ci → npm test → npm run build → 上传 dist → 部署 GitHub Pages
 
 **训练业务资料不使用 localStorage、sessionStorage 或 IndexedDB 保存。** 试用草稿只在当前页面内存中；实际云保存是否成功，以界面的保存状态为准。退出页面前尚未成功保存的修改不会成为云端数据。
 
-**登录凭证与训练资料不同。** Supabase SDK 会在浏览器中保留登录会话，以便刷新后继续登录。此处保留的是认证会话，不是个人资料、成绩、截图、计划或打卡副本；认证模块负责登录会话的续期与退出。不能因此将本版本描述为“浏览器中完全没有任何登录令牌”。
+**登录凭证与训练资料不同。** Supabase SDK 会在浏览器中保留登录会话，以便刷新后继续使用。此处保留的是认证会话，不是个人资料、成绩、截图、计划或打卡副本；认证模块负责登录会话的续期与退出。不能因此将本版本描述为“浏览器中完全没有任何登录令牌”。
 
 图片 OCR 在浏览器中执行，不发送到第三方识别服务。登录并保存截图时，图片通过已配置的云存储流程保存；访客未登录的试用图片不会被当作已保存资料。各账号及档案的数据隔离需要服务端数据库和图片权限共同生效。
 
