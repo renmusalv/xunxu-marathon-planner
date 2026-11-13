@@ -1,7 +1,10 @@
 const $ = id => document.getElementById(id);
     const weekdays = ['周一','周二','周三','周四','周五','周六','周日'];
     let activeCheckinKey='',activePlanStartDate='',checkins={},profiles=[],activeProfileId='default';
-    const personalFieldIds=['age','restingHr','maxHr','maxHrSource','thresholdHr','thresholdHrSource','vo2max','vo2maxSource','vo2maxDate','experienceMonths','recentConsistency','discomfort'];
+    const heartFieldIds=['restingHr','maxHr','maxHrSource','thresholdHr','thresholdHrSource'];
+    const vo2FieldIds=['vo2max','vo2maxSource','vo2maxDate'];
+    const trainingFieldIds=['weeklyKm','days','longRun','recentConsistency','discomfort'];
+    const personalFieldIds=[...heartFieldIds,...vo2FieldIds,'recentConsistency','discomfort'];
     const profileFieldIds=['distance','raceDate','halfGoalTime','paceMin','paceSec','weeklyKm','days','longRun','benchmarkDistance','benchmarkTime','benchmarkDate',...personalFieldIds];
     let currentRecords=[],recordDraft=null,recordJob=0,focusValidation=false,lastAssessment=null,lastAssessmentInput=null,toastTimer,formUpdateTimer;
     let cloudReady=false,cloudBooting=false,cloudSaveTimer,profileSwitching=false;
@@ -31,13 +34,15 @@ const $ = id => document.getElementById(id);
     function saveProfileForm(){
       if(!cloudReady)return false;
       const owner=activeProfileId,form=captureProfileForm();
-      try{if(cloud.stage(owner,data=>{data.form=form;return data}))queueCloudSave(owner);return true}
+      try{if(cloud.stage(owner,data=>{data.form={...data.form,...form};return data}))queueCloudSave(owner);return true}
       catch(error){storageError(error.message);return false}
     }
     function loadProfileForm(profileId){
       clearTimeout(formUpdateTimer);cancelRecordDraft();activeProfileId=profileId;checkins={};activeCheckinKey='';lastAssessment=null;lastAssessmentInput=null;
       const values={...defaultProfileForm,...cloud.getData(profileId).form};
       profileFieldIds.forEach(id=>{$(id).value=values[id]??''});$('profileSelect').value=profileId;
+      $('heartDetails').open=false;$('vo2Details').open=false;$('legacyEntry').open=false;
+      $('legacyEntry').hidden=!['benchmarkDistance','benchmarkTime','benchmarkDate'].some(id=>String(values[id]??'').trim());
       loadRecords();renderRecords();updatePersonalSummary();
     }
     async function createProfile(){
@@ -92,7 +97,7 @@ const $ = id => document.getElementById(id);
     function fmt(sec){const total=Math.round(sec);return `${Math.floor(total/60)}:${String(total%60).padStart(2,'0')}`}
     function showGenerationError(message,fieldId){
       $('templatePanel').hidden=true;
-      $('notice').textContent=message;$('notice').classList.add('show');$('generationStatus').textContent='计划未更新：请先修正上方信息。';$('riskAssessment').hidden=true;$('abilityPanel').hidden=true;lastAssessment=null;$('phaseRow').innerHTML='';$('summaryTitle').textContent='等待生成训练计划';$('summaryCopy').textContent='请补全训练信息后重新生成计划。';$('finishTime').textContent='—';$('weeksMetric').textContent='—';$('daysMetric').textContent='—';$('peakMetric').textContent='—';$('longMetric').textContent='—';$('qualityMetric').textContent='—';$('planCompletionMetric').textContent='—';$('planCompletionDetail').textContent='—';$('planCompletionBar').style.width='0%';$('progressSummary').textContent='计划未生成';$('weekList').innerHTML='<div class="empty-state">信息未通过检查，修正后点击“生成训练计划”。</div>';if(fieldId&&focusValidation){if(personalFieldIds.includes(fieldId))selectSetupTab('personal');else if(fieldId.startsWith('benchmark')){selectSetupTab('records');$('legacyEntry').open=true}else selectSetupTab('race');$(fieldId).focus();}
+      $('notice').textContent=message;$('notice').classList.add('show');$('generationStatus').textContent='计划未更新：请先修正上方信息。';$('riskAssessment').hidden=true;$('abilityPanel').hidden=true;lastAssessment=null;$('phaseRow').innerHTML='';$('summaryTitle').textContent='等待生成训练计划';$('summaryCopy').textContent='请补全训练信息后重新生成计划。';$('finishTime').textContent='—';$('weeksMetric').textContent='—';$('daysMetric').textContent='—';$('peakMetric').textContent='—';$('longMetric').textContent='—';$('qualityMetric').textContent='—';$('planCompletionMetric').textContent='—';$('planCompletionDetail').textContent='—';$('planCompletionBar').style.width='0%';$('progressSummary').textContent='计划未生成';$('weekList').innerHTML='<div class="empty-state">信息未通过检查，修正后点击“生成训练计划”。</div>';if(fieldId&&focusValidation){revealProfileField(fieldId);}
     }
     function parseBenchmarkDate(value){const match=String(value||'').trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);if(!match)return null;const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),date=new Date(0);date.setFullYear(year,month-1,day);date.setHours(0,0,0,0);if(date.getFullYear()!==year||date.getMonth()!==month-1||date.getDate()!==day)return null;return date}
     function recentSessionLimit(dayDate,history){const cutoff=new Date(dayDate);cutoff.setDate(cutoff.getDate()-30);const recent=history.filter(entry=>entry.date>=cutoff&&entry.date<=dayDate);return recent.length?Math.max(...recent.map(entry=>entry.km))*1.10:Infinity}
@@ -113,6 +118,7 @@ const $ = id => document.getElementById(id);
       if(isHalf){renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,runDays});return}
       if(!Number.isFinite(current)||current<5||current>160){showGenerationError('目前周跑量请填写 5–160 公里之间的数值。','weeklyKm');return}
       if(!Number.isFinite(longBase)||longBase<3||longBase>42){showGenerationError('近 30 天最长跑请填写 3–42 公里之间的数值。','longRun');return}
+      if(![3,4,5].includes(runDays)){showGenerationError('全马课表需要选择每周 3、4 或 5 天跑步，以安排训练与恢复。','days');return}
       const personalInvalid=validatePersonal();if(personalInvalid){showGenerationError(personalInvalid.message,personalInvalid.field);return}
       const currentWeekStart=new Date(now);currentWeekStart.setDate(now.getDate()-((now.getDay()+6)%7));const currentWeekStartKey=dateKey(currentWeekStart);activeCheckinKey=checkinStorageKey([dist,dateValue,goal,current,runDays,longBase]);const savedPlan=cloud.getData(activeProfileId).plans[activeCheckinKey];checkins={...(savedPlan?.checkins||{})};activePlanStartDate=savedPlan?.started||dateKey(now)
       const days=Math.ceil((race-now)/86400000),weeks=Math.max(1,Math.ceil(days/7));
@@ -204,12 +210,13 @@ function renderHalfTargetPlan({race,now,dateValue,goal,target,current,longBase,r
   $('peakMetric').textContent=`${kmRangeLabel(plan.summary.peakKm)} km`;
   $('longMetric').textContent=plan.summary.longestKm?`${plan.summary.longestKm} km`:'已进入比赛周';
   $('qualityMetric').textContent='周中专项 + 长跑';
-  $('templatePanel').hidden=false;$('templateTitle').textContent=target===6300?'半马 1:45 · 参考图基准课表':`半马 ${clock(target)} · 目标换算课表`;
-  $('templateCopy').textContent=target===6300?'按原图保留七周节奏、组数、距离与配速。每周 4 跑 + 1 次力量，个人资料更新后，目标课表保持一致。':'以 1:45 参考图为基准，所有训练配速统一加上目标配速差，保留七周结构、组数和时长。个人资料用于另列能力建议。';
+  $('templatePanel').hidden=false;
+  $('templateTitle').textContent=`半马 ${clock(target)} · ${plan.calibration?.mode==='reference'?'参考图课表':plan.calibration?.mode==='interpolated'?'逐课插值课表':'目标推算课表'}`;
+  $('templateCopy').textContent=(plan.calibration?.description||'保留七周专项结构，训练配速仅由目标决定。')+' 每周 4 跑 + 1 次力量；个人资料只更新能力建议与完成难度。';
   $('planDifficultyLabel').textContent=advice.label;$('planDifficultyLabel').dataset.level=advice.level;
   $('planDifficultyReason').textContent=advice.reason;
   $('difficultyMethod').textContent=advice.notes?.join(' ')||'难度是基于配速、训练量与近期基础的解释性规划规则，不是个人成功概率。';
-  const extraNotes=['1:45 比赛均速为 4:58.6/km，整秒显示 4:59；原图 4:58 为近似值，训练基准不因此整体移动。','第 4 周专项自测：16K 的前 10K 配速 5:20–5:25、后 6K 约 4:55（1:45 基准）。自测完成只是专项准备的一项线索。','原图两格未单列数字配速：第 5 周首个有氧跑、第 7 周第二个有氧跑。页面明确标为沿用有氧参考。'];
+  const extraNotes=['1:45 的精确比赛均速约 4:58.6/km，整秒显示 4:59；1:50 约 5:12.8/km，显示 5:13。图中的 4:58、5:12 为近似标注，训练唤醒仍保留各图基准。','第 4 周的 16K 专项自测按所选目标分段配速。能否稳定完成、当时体感与恢复情况都应一起判断，一次自测不保证比赛达标。','两张图的第 5 周首个有氧跑、第 7 周第二个有氧跑未单列数字配速，页面明确标为沿用有氧参考。'];
   $('templateNotes').innerHTML=`<ul>${[...plan.notes,...extraNotes].map(note=>`<li>${escapeHtml(note)}</li>`).join('')}</ul>`;
   const warningMessages=[...result.warnings];
   const invalid=validatePersonal();if(invalid)warningMessages.push(`${invalid.message} 请核对个人建议所用资料；目标课表仍按目标展示。`);
@@ -246,6 +253,15 @@ function selectSetupTab(name){
   document.querySelectorAll('[data-tab]').forEach(button=>{const selected=button.dataset.tab===name;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1});
   ['race','records','personal'].forEach(key=>$('panel-'+key).hidden=key!==name);
 }
+function revealProfileField(fieldId){
+  if(personalFieldIds.includes(fieldId)||trainingFieldIds.includes(fieldId)){
+    selectSetupTab('personal');
+    if(heartFieldIds.includes(fieldId))$('heartDetails').open=true;
+    if(vo2FieldIds.includes(fieldId))$('vo2Details').open=true;
+  }else if(fieldId.startsWith('benchmark')){selectSetupTab('records');$('legacyEntry').hidden=false;$('legacyEntry').open=true}
+  else selectSetupTab('race');
+  $(fieldId).focus();
+}
 function loadRecords(){try{currentRecords=recordsStore.list(activeProfileId)}catch(error){currentRecords=[];storageError(error.message)}}
 function recordName(distance){return Number(distance)===10?'10 公里':Number(distance)===21.0975?'半程马拉松':'全程马拉松'}
 function recordUsable(record){return record.include!==false&&record.confirmed&&['race','time_trial'].includes(record.effort)&&record.durationType==='elapsed'&&!['hilly','trail','treadmill'].includes(record.course)}
@@ -257,7 +273,7 @@ function renderRecords(){
 }
 function personalValues(){return Object.fromEntries(personalFieldIds.map(id=>[id,$(id).value]))}
 function validatePersonal(){
-  const ranges={age:[18,90,'年龄'],restingHr:[30,120,'静息心率'],maxHr:[100,230,'最大心率'],thresholdHr:[80,220,'阈值心率'],vo2max:[15,90,'VO₂max'],experienceMonths:[0,720,'持续跑龄']};
+  const ranges={restingHr:[30,120,'静息心率'],maxHr:[100,230,'最大心率'],thresholdHr:[80,220,'阈值心率'],vo2max:[15,90,'VO₂max']};
   for(const [field,[min,max,label]] of Object.entries(ranges)){const raw=$(field).value;if(raw!==''&&(!Number.isFinite(Number(raw))||Number(raw)<min||Number(raw)>max))return{field,message:`${label}请填写 ${min}–${max} 范围内的数值，或留空。`}}
   if($('maxHr').value&&$('restingHr').value&&Number($('maxHr').value)<=Number($('restingHr').value))return{field:'maxHr',message:'个人最大心率必须高于静息心率，请核对。'};
   if($('maxHr').value&&$('thresholdHr').value&&Number($('thresholdHr').value)>=Number($('maxHr').value))return{field:'thresholdHr',message:'阈值心率应低于个人最大心率，请核对测试来源。'};
@@ -265,9 +281,12 @@ function validatePersonal(){
   return null;
 }
 function updatePersonalSummary(){
+  const heartCount=['restingHr','maxHr','thresholdHr'].filter(id=>$(id).value!=='').length;
+  $('heartDetailsCount').textContent=heartCount?`已填 ${heartCount} 项`:'选填';
+  $('vo2DetailsCount').textContent=$('vo2max').value!==''?'已填写':'选填';
   const invalid=validatePersonal();if(invalid){$('personalSummary').textContent=invalid.message;return}
   const hr=RunningAssessment.heartRate(personalValues(),currentRecords);
-  $('personalSummary').textContent=hr.method==='effort'?'目前使用体感与交谈测试。补填最大心率和静息心率，或可靠的跑步阈值心率，可显示 bpm 参考。':hr.label+'。数据随当前档案保存；不会自动使用比赛平均心率代替最大心率。';
+  $('personalSummary').textContent=hr.method==='effort'?'未填可靠心率时，强度参考使用体感与交谈测试；不会因此扣适配度分。需要 bpm 建议时再展开填写。':hr.label+'。数据随当前档案保存；不会自动使用比赛平均心率代替最大心率。';
 }
 function effectiveRecords(){
   const records=currentRecords.map(record=>({...record}));
@@ -335,7 +354,7 @@ function renderAbility(result,targetPace){
   $('dataGaps').innerHTML=gaps.length?`继续补充：${escapeHtml([...new Set(gaps)].join('；'))}。<button type="button" id="fillPersonalData">完善资料 →</button>`:'';
   $('fillPersonalData')?.addEventListener('click',()=>{selectSetupTab(result.equivalentSeconds?'personal':'records');$('plannerForm').scrollIntoView({behavior:'smooth',block:'start'})});
   $('evidenceDetails').innerHTML=result.evidence.usedRecords.map(record=>`<div class="evidence-row"><strong>${escapeHtml(record.date)} · ${recordName(record.distanceKm)} ${clock(record.elapsedSeconds)}</strong><br>等效 ${clock(record.equivalentSeconds)} · 综合权重 ${Math.round(record.weight*100)}%${record.averageHr?` · 平均心率 ${record.averageHr} bpm`:''}${record.peakHr?` · 本次最高 ${record.peakHr} bpm`:''}</div>`).join('')+`<ul>${result.evidence.notes.map(note=>`<li>${escapeHtml(note)}</li>`).join('')}</ul>`+(result.evidence.excludedRecords.length?'<p>未用于当前能力：</p><ul>'+result.evidence.excludedRecords.map(record=>`<li>${escapeHtml(currentRecords.find(item=>item.id===record.id)?.date||'原有手填成绩')}：${escapeHtml(record.reason)}</li>`).join('')+'</ul>':'');
-  const personal=personalValues();$('physiologyDetails').innerHTML=`<p>${personal.age?`年龄 ${escapeHtml(personal.age)} 岁；`:''}${personal.experienceMonths?`持续跑龄 ${escapeHtml(personal.experienceMonths)} 个月；`:''}${result.heartRate.restingHr?`静息 ${result.heartRate.restingHr} bpm；`:''}${result.heartRate.maxHr?`个人最大 ${result.heartRate.maxHr} bpm；`:''}${result.heartRate.thresholdHr?`阈值 ${result.heartRate.thresholdHr} bpm。`:''}</p><p>VO₂max：${result.vo2.value===null?'未填写':`${result.vo2.value} ml/kg/min · ${escapeHtml(result.vo2.label)}${result.vo2.date?' · '+escapeHtml(result.vo2.date):''}`}。${escapeHtml(result.vo2.note)}</p><p>${result.paces.notes.map(escapeHtml).join(' ')}</p>`;
+  const personal=personalValues();$('physiologyDetails').innerHTML=`<p>${result.heartRate.restingHr?`静息 ${result.heartRate.restingHr} bpm；`:''}${result.heartRate.maxHr?`个人最大 ${result.heartRate.maxHr} bpm；`:''}${result.heartRate.thresholdHr?`阈值 ${result.heartRate.thresholdHr} bpm。`:''}</p><p>VO₂max：${result.vo2.value===null?'未填写':`${result.vo2.value} ml/kg/min · ${escapeHtml(result.vo2.label)}${result.vo2.date?' · '+escapeHtml(result.vo2.date):''}`}。${escapeHtml(result.vo2.note)}</p><p>${result.paces.notes.map(escapeHtml).join(' ')}</p>`;
 }
 function annotateSession(session,assessment){
   if(!session||['strength','rest'].includes(session.kind))return;
@@ -356,14 +375,41 @@ function freshRecordDraft(record){
   recordDraft={dirty:false,saving:false,owner:activeProfileId,id,existing:Boolean(record),record:record||null,controller:new AbortController(),job:recordJob,blob:null,objectUrl:null,rawText:record?.rawText||'',fingerprint:record?.fingerprint||null,source:record?.source||'manual'};
   $('recordForm').reset();$('recordOwner').textContent=profiles.find(profile=>profile.id===activeProfileId)?.name||'当前档案';
   $('recordDate').max=dateKey(new Date());$('recordPreview').hidden=true;$('recordPreview').removeAttribute('src');$('imagePlaceholder').hidden=false;$('imageFilename').textContent='';
-  $('recordError').hidden=true;$('recognitionWarnings').hidden=true;$('rawTextDetails').hidden=true;$('saveRecordButton').disabled=false;$('ocrProgress').hidden=true;
+  $('recordError').hidden=true;$('recognitionWarnings').hidden=true;$('recognitionFields').hidden=true;$('recognitionFields').textContent='';$('recordHeartDetails').open=false;$('rawTextDetails').hidden=true;$('saveRecordButton').disabled=false;$('ocrProgress').hidden=true;
   $('recognitionStatus').dataset.state='ready';$('recognitionMessage').textContent=record?'请核对已保存的数据，修改只影响本档案。':'请填写实际成绩；选填数据可以留空。';
   if(record){
     $('recordDistance').value=String(record.distanceKm);$('recordTime').value=clock(record.elapsedSeconds).padStart(8,'0');$('recordDate').value=record.date;
     $('recordAverageHr').value=record.averageHr??'';$('recordPeakHr').value=record.peakHr??'';$('recordEffort').value=record.effort||'';$('recordDurationType').value=record.durationType||'unknown';$('recordCourse').value=record.course||'unknown';$('recordInclude').checked=record.include!==false;
     $('imageFilename').textContent=record.filename||'';if(record.rawText){$('rawTextDetails').hidden=false;$('rawText').textContent=record.rawText}
   }
+  updateRecordHeartSummary();$('recordHeartDetails').open=Boolean(record&&(record.averageHr||record.peakHr));
   updateRecordDerived();$('recordDialog').showModal();return recordDraft;
+}
+function updateRecordHeartSummary(){
+  const average=$('recordAverageHr').value,peak=$('recordPeakHr').value;
+  $('recordHeartSummary').textContent=average||peak?[average?`平均 ${average}`:'',peak?`最高 ${peak}`:''].filter(Boolean).join(' · ')+' bpm':'选填';
+}
+function applyRecognizedFields(fields,durationType){
+  const filled=[];
+  if(fields.distanceKm!==null&&fields.distanceKm!==undefined){
+    const d=Number(fields.distanceKm),standard=Math.abs(d-10)<0.16?10:Math.abs(d-21.0975)<0.45?21.0975:Math.abs(d-42.195)<0.8?42.195:null;
+    if(standard){$('recordDistance').value=String(standard);filled.push('距离')}
+  }
+  if(fields.elapsedSeconds){$('recordTime').value=clock(fields.elapsedSeconds).padStart(8,'0');filled.push('用时')}
+  if(fields.date){$('recordDate').value=fields.date;filled.push('日期')}
+  if(fields.averageHr){$('recordAverageHr').value=fields.averageHr;filled.push('平均心率')}
+  if(fields.peakHr){$('recordPeakHr').value=fields.peakHr;filled.push('本次最高心率')}
+  $('recordDurationType').value=['elapsed','moving'].includes(durationType)?durationType:'unknown';
+  if($('recordDurationType').value!=='unknown')filled.push('计时类型');
+  updateRecordHeartSummary();$('recordHeartDetails').open=Boolean(fields.averageHr||fields.peakHr);
+  $('recognitionFields').hidden=!filled.length;
+  $('recognitionFields').textContent=filled.length?'已自动填写：'+filled.join('、')+'。核对即可，无需重复输入。':'';
+  return filled;
+}
+function recognitionTimingMessage(durationType){
+  if(durationType==='elapsed')return '已识别为完整计时，请核对，并选择比赛 / 测试 / 日常训练。';
+  if(durationType==='moving')return '已识别为移动时间，仅留档，不用于推算比赛能力；请核对并选择这次跑步的性质。';
+  return '请确认这是完整计时还是移动时间，并选择比赛 / 测试 / 日常训练。';
 }
 function updateRecordDerived(){const distance=Number($('recordDistance').value),seconds=parseTimeInput($('recordTime').value);$('recordDerived').textContent=distance&&seconds?`核算配速 ${fmt(seconds/distance)}/km · ${recordName(distance)} 使用标准比赛距离`:'配速会根据距离与用时自动计算'}
 function showDraftImage(blob,draft){if(!blob||recordDraft!==draft||activeProfileId!==draft.owner)return;if(draft.objectUrl)URL.revokeObjectURL(draft.objectUrl);draft.objectUrl=URL.createObjectURL(blob);$('recordPreview').src=draft.objectUrl;$('recordPreview').hidden=false;$('imagePlaceholder').hidden=true}
@@ -386,16 +432,11 @@ async function handleUpload(file){
     draft.blob=result.previewBlob;draft.rawText=(result.rawText||'').slice(0,20000);draft.confidence=result.confidence;
     if(result.previewBlob)showDraftImage(result.previewBlob,draft);
     const fields=result.fields||{};
-    if(fields.distanceKm!==null&&fields.distanceKm!==undefined){const d=Number(fields.distanceKm),standard=Math.abs(d-10)<0.16?10:Math.abs(d-21.0975)<0.45?21.0975:Math.abs(d-42.195)<0.8?42.195:null;if(standard)$('recordDistance').value=String(standard)}
-    if(fields.elapsedSeconds)$('recordTime').value=clock(fields.elapsedSeconds).padStart(8,'0');
-    if(fields.date)$('recordDate').value=fields.date;
-    if(fields.averageHr)$('recordAverageHr').value=fields.averageHr;if(fields.peakHr)$('recordPeakHr').value=fields.peakHr;
-    $('recordDurationType').value='unknown';
-    const warnings=[...(result.warnings||[]),'请确认这是完整计时还是移动时间，并选择比赛 / 测试 / 日常训练。'];
+    const filled=applyRecognizedFields(fields,result.durationType);
+    const warnings=[...(result.warnings||[]),recognitionTimingMessage($('recordDurationType').value)];
     if(fields.paceSeconds&&fields.elapsedSeconds&&Number($('recordDistance').value)&&Math.abs(fields.paceSeconds-fields.elapsedSeconds/Number($('recordDistance').value))>8)warnings.unshift('截图配速与距离、用时不一致，请检查移动时间、单位或 GPS 距离。');
     $('recognitionWarnings').textContent=warnings.join(' ');$('recognitionWarnings').hidden=false;
-    const found=Object.values(fields).filter(value=>value!==null&&value!==undefined).length;
-    $('recognitionMessage').textContent=`识别完成 · 提取 ${found} 项。请逐项核对，缺失信息可手动补充。`;
+    $('recognitionMessage').textContent=filled.length?`识别完成 · 已填入 ${filled.length} 项。核对数据并选择跑步性质后保存。`:'暂未提取到可靠字段，可对照截图补充必需信息。';
     $('ocrProgress').value=100;$('rawText').textContent=draft.rawText;$('rawTextDetails').hidden=!draft.rawText;updateRecordDerived();
   }catch(error){
     if(!live())return;if(!draft.objectUrl)draft.source='manual';$('recognitionStatus').dataset.state='error';$('recognitionMessage').textContent=error.message||'这张截图暂未识别成功，可手动填写后保存。';
@@ -655,12 +696,14 @@ profileFieldIds.forEach(id=>{
 });
 document.querySelectorAll('[data-tab]').forEach(button=>{button.addEventListener('click',()=>selectSetupTab(button.dataset.tab));button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const keys=['race','records','personal'],current=keys.indexOf(button.dataset.tab),next=event.key==='Home'?0:event.key==='End'?2:(current+(event.key==='ArrowRight'?1:2))%3;selectSetupTab(keys[next]);$('tab-'+keys[next]).focus()})});
 $('openRecords').addEventListener('click',()=>selectSetupTab('records'));
+$('openTraining').addEventListener('click',()=>selectSetupTab('personal'));
 $('uploadButton').addEventListener('click',()=>$('screenshotInput').click());$('screenshotInput').addEventListener('change',event=>handleUpload(event.target.files?.[0]));
 $('uploadZone').addEventListener('dragover',event=>{event.preventDefault();$('uploadZone').classList.add('dragging')});$('uploadZone').addEventListener('dragleave',()=>$('uploadZone').classList.remove('dragging'));
 $('uploadZone').addEventListener('drop',event=>{event.preventDefault();$('uploadZone').classList.remove('dragging');if(event.dataTransfer.files.length>1){toast('请逐张上传，以便核对每次成绩。');return}handleUpload(event.dataTransfer.files[0])});
 $('manualRecordButton').addEventListener('click',()=>{if(cloudReady)freshRecordDraft()});$('cancelRecordButton').addEventListener('click',cancelRecordDraft);$('closeRecordDialog').addEventListener('click',cancelRecordDraft);
 $('recordDialog').addEventListener('cancel',event=>{event.preventDefault();cancelRecordDraft()});$('recordForm').addEventListener('submit',saveRecord);$('recordForm').addEventListener('input',()=>{if(recordDraft)recordDraft.dirty=true});$('recordForm').addEventListener('change',()=>{if(recordDraft)recordDraft.dirty=true});
 ['recordDistance','recordTime'].forEach(id=>$(id).addEventListener('input',updateRecordDerived));
+['recordAverageHr','recordPeakHr'].forEach(id=>$(id).addEventListener('input',updateRecordHeartSummary));
 $('recordList').addEventListener('click',event=>{const edit=event.target.closest('[data-record-edit]'),remove=event.target.closest('[data-record-delete]');if(edit)editRecord(edit.dataset.recordEdit);if(remove)deleteRecord(remove.dataset.recordDelete)});
 $('weekList').addEventListener('click',async event=>{
   const button=event.target.closest('.checkin');if(!button||button.disabled||!cloudReady||profileSwitching)return;

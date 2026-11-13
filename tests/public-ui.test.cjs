@@ -51,7 +51,7 @@ function harness({configured=false,emailEnabled=true}={}){
   if(selector==='#weekList .checkin[data-workout="true"]')return [...element('weekList').innerHTML.matchAll(/<button\b([^>]*)>/g)].filter(m=>/data-workout="true"/.test(m[1])).map(m=>{const a=Object.fromEntries([...m[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(x=>[x[1],x[2]]));return{dataset:{date:a['data-date']},getAttribute:key=>a[key]??null}});
   return[];
  }};
- const defaults={distance:'21.0975',halfGoalTime:'01:45:00',paceMin:'5',paceSec:'0',weeklyKm:'28',days:'4',longRun:'12',maxHrSource:'measured',thresholdHrSource:'measured',vo2maxSource:'watch'};Object.entries(defaults).forEach(([id,value])=>element(id).value=value);
+ const defaults={distance:'21.0975',halfGoalTime:'01:45:00',paceMin:'5',paceSec:'0',weeklyKm:'',days:'',longRun:'',maxHrSource:'observed',thresholdHrSource:'watch',vo2maxSource:'watch'};Object.entries(defaults).forEach(([id,value])=>element(id).value=value);
  function remoteClient(owner,onStatus){
   if(!remote.has(owner))remote.set(owner,GuestStore.createClient());const store=remote.get(owner);
   return{...store,session:async()=>({user:{id:owner,email:owner+'@example.com'},profiles:store.profiles()}),status:id=>cloudStatuses.get(owner)||({...store.status(id),status:'saved'}),hasUnsaved:()=>Boolean(cloudStatuses.get(owner)?.dirty),flush:async id=>{flushCalls.push(owner);cloudStatuses.delete(owner);return store.flush(id)}};
@@ -70,6 +70,7 @@ function harness({configured=false,emailEnabled=true}={}){
 }
 test('unconfigured public app generates 1:45 plan without authentication and cannot send fake OTP',async()=>{
  const h=harness();await h.api.startPublicApp();assert.equal(h.api.mode(),'guest');assert.match(h.element('weekList').innerHTML,/4:50–4:55\/km/);assert.match(h.element('cloudState').textContent,/尚未接通/);assert.equal(h.api.hasUnsavedChanges(),false);
+ assert.equal(h.element('weeklyKm').value,'');assert.equal(h.element('longRun').value,'');assert.equal(h.element('days').value,'');assert.equal(h.element('fitScore').textContent,'—');
  h.element('weeklyKm').value='44';h.api.saveProfileForm();assert.equal(h.api.client().getData('default').form.weeklyKm,'44');assert.equal(h.api.hasUnsavedChanges(),true);
  h.api.openLogin();assert.ok(h.element('loginDialog').open);assert.equal(h.element('loginUnavailable').hidden,false);assert.equal(h.element('sendCodeForm').hidden,true);
  await h.api.sendCode({preventDefault(){}});assert.equal(h.sends(),0);assert.doesNotMatch(h.element('cloudState').textContent,/已保存/);
@@ -85,7 +86,7 @@ test('account changes with matching profile ids clear previous account data; log
  const h=harness({configured:true});await h.seed('user-a',{weeklyKm:'61',restingHr:'49'});await h.seed('user-b',{weeklyKm:'22',restingHr:'72'});await h.api.startPublicApp();
  h.setUser({id:'user-a'});await h.api.activateCloud({id:'user-a'});assert.equal(h.element('restingHr').value,'49');
  h.setUser({id:'user-b'});await h.api.activateCloud({id:'user-b'});assert.equal(h.element('restingHr').value,'72');assert.equal(h.element('weeklyKm').value,'22');assert.deepEqual(h.boundOwners,['user-a','user-b']);
- await h.api.signOut();assert.equal(h.api.mode(),'guest');assert.equal(h.element('restingHr').value,'');assert.equal(h.element('weeklyKm').value,'28');assert.equal(h.api.client().getData('default').records.length,0);assert.equal(h.api.pending(),null);
+ await h.api.signOut();assert.equal(h.api.mode(),'guest');assert.equal(h.element('restingHr').value,'');assert.equal(h.element('weeklyKm').value,'');assert.equal(h.api.client().getData('default').records.length,0);assert.equal(h.api.pending(),null);
 });
 
 test('switching identities closes and clears an in-flight old result draft',async()=>{
