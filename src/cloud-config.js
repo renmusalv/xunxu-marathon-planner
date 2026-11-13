@@ -2,5 +2,7 @@
 window.XUNXU_CONFIG = Object.freeze({
   supabaseUrl: '',
   supabasePublishableKey: '',
-  emailLoginEnabled: false
+  emailLoginEnabled: false,
+  sharedLoginEmail: '',
+  passwordLoginEnabled: false
 });

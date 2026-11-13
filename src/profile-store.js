@@ -39,7 +39,7 @@
     let registry=[],user=null;
     const path=id=>'/api/cloud/profiles/'+encodeURIComponent(validProfile(id));
     function state(id) { const value=states.get(validProfile(id));if(!value)throw new Error('云端档案尚未加载。');return value; }
-    function notify(s,status,error) {s.status=status;s.error=error||null;onStatus({profileId:s.id,status,error:s.error,dirty:s.dirty,retryable:s.dirty&&s.error?.source!=='action',revision:s.revision,updatedAt:s.updatedAt});}
+    function notify(s,status,error,extra) {s.status=status;s.error=error||null;onStatus({profileId:s.id,status,error:s.error,dirty:s.dirty,retryable:s.dirty&&s.error?.source!=='action',revision:s.revision,updatedAt:s.updatedAt,...extra});}
     function metadata(s) {return {id:s.id,name:s.name,revision:s.revision,updatedAt:s.updatedAt};}
     function remember(s) {const item=metadata(s),index=registry.findIndex(p=>p.id===s.id);if(index<0)registry.push(item);else registry[index]=item;}
     function accept(profile) {
@@ -81,7 +81,7 @@
         const saved=result.profile;if(!saved||saved.id!==s.id||!Number.isInteger(saved.revision))throw new Error('云端保存结果异常，当前修改仍保留。');
         const normalized=normalizeData(saved.data);
         s.data=normalizeData(mergeNewer(normalized,before,s.data));s.revision=saved.revision;s.name=saved.name;s.updatedAt=saved.updatedAt||'';
-        s.dirty=s.version!==version&&!equal(s.data,normalized);remember(s);notify(s,s.dirty?'dirty':'saved');
+        s.dirty=s.version!==version&&!equal(s.data,normalized);remember(s);notify(s,s.dirty?'dirty':'saved',null,{persisted:true,saveKind:mutate?'action':'autosave'});
         return {profile:{...metadata(s),data:copy(normalized)}};
       }catch(error){error.source=mutate?'action':'autosave';notify(s,['conflict','save_uncertain'].includes(error.code)?'conflict':error.status===401?'unauthorized':'error',error);throw error;}
     }

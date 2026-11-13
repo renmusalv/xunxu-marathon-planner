@@ -9,7 +9,7 @@
 
   const DAY = 86400000;
   const HALF = 21.0975;
-  const LIMITS = Object.freeze({ fileBytes: 256 * 1024 * 1024, xmlBytes: 256 * 1024 * 1024, textCharacters: 64 * 1024 * 1024, tagCharacters: 1024 * 1024, records: 5000000, workouts: 20000, zipEntries: 20000, zipDirectoryBytes: 16 * 1024 * 1024, zipXmlCandidates: 32, zipProbeBytes: 1024 * 1024, compressionRatio: 300 });
+  const LIMITS = Object.freeze({ textCharacters: 64 * 1024 * 1024, tagCharacters: 1024 * 1024, records: 5000000, workouts: 20000, zipEntries: 20000, zipDirectoryBytes: 16 * 1024 * 1024, zipXmlCandidates: 32, zipProbeBytes: 1024 * 1024, compressionRatio: 300 });
   const TYPE = 'HKQuantityTypeIdentifier';
   const REST = TYPE + 'RestingHeartRate';
   const VO2 = TYPE + 'VO2Max';
@@ -281,7 +281,8 @@
   async function openZipEntry(file, entry, directoryOffset, probe) {
     if (entry.flags & 1) fail('UNSUPPORTED_ZIP', '无法读取加密 ZIP，请先解密并选择健康主数据 XML。');
     if (![0, 8].includes(entry.method)) fail('UNSUPPORTED_ZIP', '此 ZIP 压缩方式不受支持，请解压后选择健康主数据 XML。');
-    if (!entry.uncompressed || !entry.compressed || (!probe && (entry.uncompressed > LIMITS.xmlBytes || entry.uncompressed / entry.compressed > LIMITS.compressionRatio))) fail('FILE_TOO_LARGE', '健康 XML 超过安全读取范围，当前完整读取上限为 256 MB。');
+    if (!entry.uncompressed || !entry.compressed) fail('INVALID_ZIP', 'ZIP 中的健康 XML 为空，请重新导出。');
+    if (!probe && entry.uncompressed / entry.compressed > LIMITS.compressionRatio) fail('UNSUPPORTED_ZIP', 'ZIP 压缩比异常，请先解压后选择健康主数据 XML。');
     if (entry.local + 30 > directoryOffset) fail('INVALID_ZIP', 'ZIP 文件定位信息损坏。');
     const localBytes = await file.slice(entry.local, entry.local + 30).arrayBuffer(), local = new DataView(localBytes);
     if (local.getUint32(0, true) !== 0x04034b50 || local.getUint16(6, true) !== entry.flags || local.getUint16(8, true) !== entry.method) fail('INVALID_ZIP', 'ZIP 文件头不一致。');
@@ -369,7 +370,6 @@
     options = options || {};
     aborted(options.signal);
     if (!file || typeof file.slice !== 'function' || typeof file.stream !== 'function' || !Number.isFinite(file.size) || file.size <= 0) fail('UNSUPPORTED_FILE', '请选择完整的 Apple 健康 XML 或 ZIP 文件。');
-    if (file.size > LIMITS.fileBytes) fail('FILE_TOO_LARGE', '文件超过 256 MB，请减少导出范围或使用较小的 export.xml。');
     let payload;
     try {
       const magic = new Uint8Array(await file.slice(0, 4).arrayBuffer());
@@ -391,7 +391,7 @@
         aborted(options.signal);
         if (result.done) break;
         bytes += result.value.byteLength;
-        if (bytes > LIMITS.xmlBytes || bytes > payload.expectedSize) fail('FILE_TOO_LARGE', '健康文件解压后超出声明大小或安全范围。');
+        if (bytes > payload.expectedSize) fail('INVALID_ZIP', '健康文件解压后超出声明大小，请重新导出。');
         crc = crcUpdate(crc, result.value);
         parser.push(decoder.decode(result.value, { stream: true }));
         if (typeof options.onProgress === 'function') options.onProgress(Math.min(0.99, bytes / payload.expectedSize));

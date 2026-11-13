@@ -1,4 +1,4 @@
-/* Independent email identity + private cloud transport. Business data stays out of browser storage. */
+/* Shared password identity + private cloud transport. Business data stays out of browser storage. */
 (function (root) {
   'use strict';
   const MAX_IMAGE = 12 * 1024 * 1024;
@@ -9,13 +9,16 @@
   }
   function validateConfig(input) {
     const config = input || {}, key = String(config.supabasePublishableKey || '').trim();
+    const sharedLoginEmail = String(config.sharedLoginEmail || '').trim().toLowerCase();
     let url;
     try {
       url = new URL(String(config.supabaseUrl || '').trim());
       if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !/^\/?$/.test(url.pathname)) throw new Error();
-    } catch { return {configured: false, emailLoginEnabled: false}; }
-    if (!/^sb_publishable_[A-Za-z0-9_-]{10,}$/.test(key)) return {configured: false, emailLoginEnabled: false};
-    return {configured: true, url: url.origin, key, emailLoginEnabled: config.emailLoginEnabled === true};
+    } catch { return {configured: false, emailLoginEnabled: false, sharedLoginEmail: '', passwordLoginEnabled: false}; }
+    if (!/^sb_publishable_[A-Za-z0-9_-]{10,}$/.test(key)) return {configured: false, emailLoginEnabled: false, sharedLoginEmail: '', passwordLoginEnabled: false};
+    const validSharedLoginEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sharedLoginEmail);
+    return {configured: true, url: url.origin, key, emailLoginEnabled: config.emailLoginEnabled === true,
+      sharedLoginEmail: validSharedLoginEmail ? sharedLoginEmail : '', passwordLoginEnabled: config.passwordLoginEnabled === true && validSharedLoginEmail};
   }
   function normalizeUser(user) {
     if (!user || typeof user.id !== 'string' || !user.id || user.is_anonymous === true || !user.email || !user.email_confirmed_at) return null;
@@ -28,23 +31,26 @@
     try { details = typeof original.details === 'string' ? JSON.parse(original.details) : original.details || {}; } catch {}
     let status = /^PT\d{3}$/.test(sqlCode) ? Number(sqlCode.slice(2)) : Number(original.status || original.statusCode || 0);
     const code = details.code || sqlCode;
+    if (['invalid_credentials', 'invalid_grant'].includes(code)) return failure('登录密码不正确，请核对后重试。', 'invalid_password', 401);
     if (/^PT\d{3}$/.test(sqlCode)) {
       let normalized = String(details.code || (status === 409 ? 'conflict' : 'validation')).toLowerCase();
       if (normalized === 'revision_conflict') normalized = 'conflict';
       if (normalized === 'auth_required') normalized = 'unauthorized';
-      const error = failure(original.message || '云端操作未完成。', normalized, status);
+      const message = normalized === 'unauthorized' ? '请先登录后，再读取或保存云端档案。' : original.message || '云端操作未完成。';
+      const error = failure(message, normalized, status);
       if (Number.isInteger(details.currentRevision)) error.currentRevision = details.currentRevision;
       return error;
     }
     if (['email_address_not_authorized', 'email_provider_disabled', 'email_not_confirmed', 'signup_disabled'].includes(code)) {
-      return failure('站点的邮箱验证服务尚未向该邮箱开放，请稍后重试；你仍可继续试用课表。', 'email_service_unavailable', 503);
+      if (code === 'email_address_not_authorized') return failure('站点的邮箱验证服务尚未向该邮箱开放，请稍后重试；你仍可继续试用课表。', 'email_service_unavailable', 503);
+      return failure('站点登录服务尚未正确配置，请联系维护者。', 'cloud_not_ready', 503);
     }
     if (status === 429 || ['over_email_send_rate_limit', 'over_request_rate_limit', 'over_send_rate_limit'].includes(code)) {
-      return failure('验证码发送过于频繁，请稍后再试，并检查垃圾邮件。', 'rate_limited', 429);
+      return failure(code === 'over_email_send_rate_limit' || code === 'over_send_rate_limit' ? '验证码发送过于频繁，请稍后再试，并检查垃圾邮件。' : '登录尝试过于频繁，请稍后再试。', 'rate_limited', 429);
     }
     if (['otp_expired', 'otp_disabled', 'validation_failed'].includes(code)) return failure('验证码无效或已过期，请核对邮箱和验证码，或重新获取。', 'invalid_otp', 400);
     if (original.name === 'AuthSessionMissingError' || code === 'AuthSessionMissingError' || code === 'session_not_found' || code === 'refresh_token_not_found' || code === 'PGRST301' || status === 401 || status === 403) {
-      return failure('登录已过期，请重新验证邮箱后读取和保存云端档案。', 'unauthorized', 401);
+      return failure('登录已过期，请重新登录后读取和保存云端档案。', 'unauthorized', 401);
     }
     if (code === 'PGRST202' || code === '42P01' || code === '42501') return failure('云端服务尚未完成配置，当前修改未保存，请联系站点维护者。', 'cloud_not_ready', 503);
     if (status === 404) return failure('云端档案或截图不存在，或你没有访问权限。', 'not_found', 404);
@@ -88,8 +94,8 @@
       }
     }
     function ensureClient() {
-      if (!settings.configured) throw failure('邮箱云服务尚未接通，你可以继续公开试用训练计划。', 'cloud_not_ready', 503);
-      if (!sdk?.createClient) throw failure('邮箱登录组件未加载，请刷新页面后重试。', 'cloud_not_ready', 503);
+      if (!settings.configured) throw failure('云端服务尚未接通，你可以继续公开试用训练计划。', 'cloud_not_ready', 503);
+      if (!sdk?.createClient) throw failure('云端登录组件未加载，请刷新页面后重试。', 'cloud_not_ready', 503);
       if (!client) {
         client = sdk.createClient(settings.url, settings.key, {
           auth: {persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'xunxu-auth-v3-' + new URL(settings.url).hostname},
@@ -120,7 +126,7 @@
           if (error.status === 401) {setUser(null); initialized = true; return null;}
           throw error;
         }
-        if (verified.data?.user?.id !== expectedId) throw failure('邮箱登录身份已改变，请重新连接云端。', 'account_changed', 401);
+        if (verified.data?.user?.id !== expectedId) throw failure('登录身份已改变，请重新连接云端。', 'account_changed', 401);
         setUser(normalizeUser(verified.data?.user)); initialized = true;
         return snapshotUser();
       })().finally(() => {initPromise = null;});
@@ -128,7 +134,7 @@
     }
     async function sendCode(value) {
       const email = normalizeEmail(value);
-      if (!settings.emailLoginEnabled) throw failure('邮箱验证服务正在接入，暂时不能发送验证码。课表试用仍可正常使用。', 'email_service_unavailable', 503);
+      if (!settings.emailLoginEnabled) throw failure('邮箱验证服务尚未启用。课表试用仍可正常使用。', 'email_service_unavailable', 503);
       const {error} = await ensureClient().auth.signInWithOtp({email, options: {shouldCreateUser: true}});
       if (error) throw mapError(error);
       return {email};
@@ -136,7 +142,7 @@
     async function verifyCode(value, valueToken) {
       const email = normalizeEmail(value), token = String(valueToken || '').trim();
       if (!/^\d{6,10}$/.test(token)) throw failure('请输入邮件中的数字验证码。', 'invalid_otp', 400);
-      if (!settings.emailLoginEnabled) throw failure('邮箱验证服务尚未启用。', 'email_service_unavailable', 503);
+      if (!settings.emailLoginEnabled) throw failure('邮箱验证码登录尚未启用。', 'email_service_unavailable', 503);
       const auth = ensureClient().auth, result = await auth.verifyOtp({email, token, type: 'email'});
       if (result.error) throw mapError(result.error);
       const expectedId = result.data?.user?.id || result.data?.session?.user?.id, started = epoch;
@@ -146,6 +152,21 @@
       if (verified.error) throw mapError(verified.error);
       const next = normalizeUser(verified.data?.user);
       if (!next || next.id !== expectedId) throw failure('尚未完成邮箱验证，请重新获取验证码。', 'unauthorized', 401);
+      initialized = true; setUser(next); return snapshotUser();
+    }
+    async function signInWithPassword(value) {
+      const password = String(value || '');
+      if (!settings.passwordLoginEnabled) throw failure('密码云登录尚未启用。课表试用仍可正常使用。', 'cloud_not_ready', 503);
+      if (!password || password.length > 128) throw failure('请输入有效的登录密码。', 'invalid_password', 400);
+      const auth = ensureClient().auth, result = await auth.signInWithPassword({email: settings.sharedLoginEmail, password});
+      if (result.error) throw mapError(result.error);
+      const expectedId = result.data?.user?.id || result.data?.session?.user?.id, started = epoch;
+      if (!expectedId) throw failure('登录未完成，请重试。', 'unauthorized', 401);
+      const verified = await auth.getUser(result.data?.session?.access_token);
+      if (epoch !== started) throw failure('登录状态已改变，请重新输入密码。', 'account_changed', 401);
+      if (verified.error) throw mapError(verified.error);
+      const next = normalizeUser(verified.data?.user);
+      if (!next || next.id !== expectedId) throw failure('服务器账号尚未完成验证，请联系站点维护者。', 'unauthorized', 401);
       initialized = true; setUser(next); return snapshotUser();
     }
     async function signOut() {
@@ -159,13 +180,13 @@
       if (context.signal?.aborted) throw failure('读取已取消。', 'aborted', 499);
     }
     async function contextFor(expectedId, signal) {
-      if (!expectedId || user?.id !== expectedId) throw failure('请先验证邮箱，再读取或保存该账号的档案。', 'unauthorized', 401);
+      if (!expectedId || user?.id !== expectedId) throw failure('请先登录，再读取或保存云端档案。', 'unauthorized', 401);
       const context = {owner: expectedId, epoch, signal};
       const result = await ensureClient().auth.getSession();
       guard(context);
       if (result.error) throw mapError(result.error);
       const session = result.data?.session;
-      if (!session?.access_token || session.user?.id !== expectedId) throw failure('登录状态已改变，请重新验证邮箱。', 'unauthorized', 401);
+      if (!session?.access_token || session.user?.id !== expectedId) throw failure('登录状态已改变，请重新登录。', 'unauthorized', 401);
       const token = session.access_token;
       // Every step of an upload/save uses the same owner's token, even if another tab signs in.
       context.api = sdk.createClient(settings.url, settings.key, {
@@ -263,7 +284,8 @@
     return {
       isConfigured: () => settings.configured,
       isEmailLoginEnabled: () => settings.emailLoginEnabled,
-      init, getUser: snapshotUser, sendCode, verifyCode, signOut,
+      isPasswordLoginEnabled: () => settings.passwordLoginEnabled,
+      init, getUser: snapshotUser, sendCode, verifyCode, signInWithPassword, signOut,
       onAuthChange: callback => {listeners.add(callback); return () => listeners.delete(callback);},
       createFetch: owner => (url, options) => transport(owner, url, options),
       fetch: (url, options) => transport(user?.id, url, options)

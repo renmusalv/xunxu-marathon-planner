@@ -12,11 +12,12 @@ const $ = id => document.getElementById(id);
     function makeCloudClient(userId){const provider=typeof XunxuCloud==='undefined'?null:XunxuCloud,epoch=typeof accountEpoch==='undefined'?0:accountEpoch;return ProfileStore.createClient({fetch:userId&&provider?.createFetch?provider.createFetch(userId):provider?.fetch,onStatus:info=>{if(userId&&(userId!==currentUserId||epoch!==accountEpoch))return;updateCloudStatus(info)}})}
     let savedGuestClient=null,currentUserId=null,authBusy=false,importBusy=false,authActivationPromise=null,activationUserId=null,accountEpoch=0,authChangePending=false;
     let cloud=makeCloudClient(),recordsStore=ProfileStore.createStore(cloud),storageMode='cloud';
-    let otpEmail='',otpResendAt=0,otpTimer=null;
+    let otpEmail='',otpResendAt=0,otpTimer=null,lastAutosaveToastAt=0;
     const trialImports=new Map();
     function providerUser(){return typeof XunxuCloud==='undefined'?null:XunxuCloud.getUser()}
     function cloudConfigured(){return typeof XunxuCloud!=='undefined'&&XunxuCloud.isConfigured()}
-    function emailEnabled(){return cloudConfigured()&&XunxuCloud.isEmailLoginEnabled()}
+    function passwordLoginEnabled(){return cloudConfigured()&&XunxuCloud.isPasswordLoginEnabled?.()===true}
+    function emailLoginEnabled(){return cloudConfigured()&&XunxuCloud.isEmailLoginEnabled?.()===true}
     function savedMessage(cloudText,guestText){return storageMode==='cloud'?cloudText:guestText}
 
     const defaultDate = new Date(); defaultDate.setDate(defaultDate.getDate()+111); $('raceDate').value = dateKey(defaultDate);
@@ -57,7 +58,7 @@ const $ = id => document.getElementById(id);
       try{
         saveProfileForm();clearTimeout(cloudSaveTimer);await client.flush(activeProfileId);if(epoch!==accountEpoch)return;
         const id=uniqueId('profile');await client.create({id,name,data:{form:{...defaultProfileForm},records:[],plans:{},history:[]}});
-        if(epoch!==accountEpoch)return;profiles=client.profiles();renderProfileOptions();loadProfileForm(id);selectSetupTab('race');updateDistanceMode();render();$('profileDialog').close();toast(savedMessage('新档案已保存到云端。','已建立试用档案，仅保留在当前页面。'));
+        if(epoch!==accountEpoch)return;profiles=client.profiles();renderProfileOptions();loadProfileForm(id);selectSetupTab('race');updateDistanceMode();render();$('profileDialog').close();toast(savedMessage('新档案已保存到服务器。','已建立试用档案，仅保留在当前页面。'));
       }catch(error){if(epoch===accountEpoch){input.setCustomValidity(error.message);input.reportValidity()}}
       finally{if(epoch===accountEpoch){profileSwitching=false;setEditingEnabled(cloudReady);$('createProfileSubmit').disabled=false}}
     }
@@ -555,7 +556,7 @@ function setRecordSaving(saving){
 }
 function updateStorageCopy(){
   const guest=storageMode==='guest';
-  $('profileStorageHint').textContent=guest?'各试用档案相互独立，仅在当前页面暂存。登录邮箱后可另存到云端。':'各档案独立保存到云端，登录同一邮箱可跨设备使用。';
+  $('profileStorageHint').textContent=guest?'各试用档案相互独立，仅在当前页面暂存。登录后可另存到云端。':'各档案独立保存到云端；使用相同账号登录的设备可同步使用。';
   $('recordStorageHint').textContent=guest?'截图在当前设备识别，不发送给第三方识别服务。试用成绩仅在当前页面，登录后可保存到云端。':'截图在当前设备识别；确认后将截图与成绩保存到当前云端档案，不发送给第三方识别服务。';
   $('saveRecordButton').textContent=guest?'确认数据并用于评估':'确认数据并保存';
   $('cloudStorageHint').textContent=guest?' · 刷新或关闭后会丢失':' · 比赛、成绩、截图和打卡自动保存到云端';
@@ -563,18 +564,21 @@ function updateStorageCopy(){
 }
 function updateCloudStatus(info){
   if(info.profileId&&info.profileId!==activeProfileId)return;
+  if(storageMode==='cloud'&&info.persisted&&info.status==='saved'&&info.saveKind==='autosave'){
+    const now=Date.now();if(now-lastAutosaveToastAt>1500){toast('档案修改已保存到服务器。');lastAutosaveToastAt=now}
+  }
   updateStorageCopy();
   if(storageMode==='guest'){
-    $('cloudBanner').dataset.state='guest';$('cloudState').textContent=emailEnabled()?'公开试用 · 登录邮箱后可保存到云端':'公开试用 · 邮箱云服务尚未接通';
+    $('cloudBanner').dataset.state='guest';$('cloudState').textContent=(passwordLoginEnabled()||emailLoginEnabled())?'公开试用 · 登录后可保存到服务器':'公开试用 · 云端登录尚未接通';
     $('cloudIdentity').textContent='试用资料仅在当前页面';$('cloudRetry').hidden=true;$('cloudReload').hidden=true;$('cloudSignIn').hidden=false;
-    $('cloudSignIn').textContent=providerUser()?'重新连接云端':emailEnabled()?'邮箱登录保存':'了解云端保存';
+    $('cloudSignIn').textContent=providerUser()?'重新连接云端':passwordLoginEnabled()?'密码登录并同步':emailLoginEnabled()?'邮箱登录保存':'了解云端保存';
     if(info.error)storageError(info.error.message);
     return;
   }
-  const status=info.status||'loading',labels={loading:'正在读取云端档案…',dirty:'有修改尚未保存，正在等待同步…',saving:'正在保存到云端…',saved:'已保存到云端',error:'云端保存失败，修改仍保留在当前页面',conflict:'云端已有更新，当前草稿未覆盖云端',unauthorized:'请登录邮箱后读取和保存档案'};
+  const status=info.status||'loading',labels={loading:'正在读取服务器档案…',dirty:'有修改尚未保存，正在等待同步…',saving:'正在保存到服务器…',saved:'已保存到服务器',error:'服务器保存失败，修改仍保留在当前页面',conflict:'服务器已有更新，当前草稿未覆盖云端',unauthorized:'请登录后读取和保存档案'};
   const message=info.error?.message||labels[status]||labels.loading;
   $('cloudBanner').dataset.state=status;$('cloudState').textContent=message+(status==='error'&&info.error?.source==='action'?' 请重新执行刚才的操作以重试。':'');
-  $('cloudRetry').hidden=!(status==='dirty'||(status==='error'&&(!cloudReady||info.retryable)));$('cloudRetry').textContent=cloudReady?'重试保存':'重新连接';$('cloudReload').hidden=!cloudReady;$('cloudReload').disabled=status==='saving';$('cloudSignIn').hidden=status!=='unauthorized';$('cloudSignIn').textContent='邮箱登录保存';
+  $('cloudRetry').hidden=!(status==='dirty'||(status==='error'&&(!cloudReady||info.retryable)));$('cloudRetry').textContent=cloudReady?'重试保存':'重新连接';$('cloudReload').hidden=!cloudReady;$('cloudReload').disabled=status==='saving';$('cloudSignIn').hidden=status!=='unauthorized';$('cloudSignIn').textContent='登录并同步';
   if(status==='saved'){$('storageStatus').hidden=true}else if(info.error)storageError(info.error.message);
 }
 function clearAccountView(){
@@ -610,13 +614,13 @@ async function startCloud(epoch=accountEpoch){
     }
     if(epoch!==accountEpoch)return false;
     const chosen=loadedProfiles[0].id;if(!accountClient.isLoaded(chosen))await accountClient.load(chosen);if(epoch!==accountEpoch)return false;
-    profiles=loadedProfiles;$('cloudIdentity').textContent=session.user.email||session.user.displayName||'已登录';
+    profiles=loadedProfiles;$('cloudIdentity').textContent=session.user.email||session.user.displayName||'已登录 · 服务器已连接';
     cloudReady=true;renderProfileOptions();loadProfileForm(chosen);setEditingEnabled(true);updateDistanceMode();render();updateCloudStatus({profileId:chosen,...accountClient.status(chosen)});updateTrialImport();return true;
   }finally{if(epoch===accountEpoch)cloudBooting=false}
 }
 async function activateCloud(user){
   if(!user?.id)return;
-  if(storageMode==='guest'&&recordDraft?.dirty){storageError('邮箱已登录。请先确认或取消当前成绩，再点击“重新连接云端”。试用资料仍保留。');updateCloudStatus({status:'guest'});return}
+  if(storageMode==='guest'&&recordDraft?.dirty){storageError('已登录云端账号。请先确认或取消当前成绩，再点击“重新连接云端”。试用资料仍保留。');updateCloudStatus({status:'guest'});return}
   if(storageMode==='cloud'&&currentUserId===user.id&&cloudReady)return;
   if(authActivationPromise&&activationUserId===user.id)return authActivationPromise;
   const priorGuest=storageMode==='guest'?cloud:null,priorProfile=activeProfileId;
@@ -629,7 +633,7 @@ async function activateCloud(user){
       if(epoch!==accountEpoch)return;
       const guest=priorGuest||savedGuestClient;savedGuestClient=null;
       await startGuest({client:guest,profileId:priorProfile});
-      storageError('邮箱已登录，但云端资料暂时无法读取：'+error.message+' 试用资料仍在当前页面。');
+      storageError('已登录，但服务器资料暂时无法读取：'+error.message+' 试用资料仍在当前页面。');
       toast('云端连接未完成，可以继续试用或重试连接。');
     }finally{if(epoch===accountEpoch){authActivationPromise=null;activationUserId=null;updateTrialImport()}}
   })();return authActivationPromise;
@@ -658,7 +662,7 @@ async function importTrial(){
       if(epoch!==accountEpoch)throw new Error('登录身份已变化，上传已停止。');
     }
     savedGuestClient.dropProfile(sourceId);trialImports.delete(sourceId);profiles=cloud.profiles();renderProfileOptions();loadProfileForm(id);updateDistanceMode();render();updateCloudStatus({profileId:id,...cloud.status(id)});
-    toast('试用资料已另存为新的云端档案。');
+    toast('试用资料已另存为新的服务器档案。');
   }catch(error){if(epoch===accountEpoch){$('trialImportError').textContent='尚未全部保存：'+error.message+' 试用原稿仍保留，可重试。';$('trialImportError').hidden=false;profiles=cloud.profiles();renderProfileOptions()}}
   finally{if(epoch===accountEpoch){importBusy=false;profileSwitching=false;$('cloudSignOut').disabled=false;setEditingEnabled(cloudReady);updateTrialImport()}}
 }
@@ -669,26 +673,28 @@ function updateCodeButton(){
   if(seconds&&$('loginDialog').open)otpTimer=setTimeout(updateCodeButton,1000);
 }
 function setAuthBusy(busy){
-  authBusy=busy;$('loginEmail').disabled=busy;$('loginCode').disabled=busy;$('verifyCodeButton').disabled=busy;$('closeLoginDialog').disabled=busy;$('continueTrialButton').disabled=busy;$('verifyCodeButton').textContent=busy?'正在验证…':'验证并登录';updateCodeButton();
+  authBusy=busy;$('loginPassword').disabled=busy;$('passwordLoginButton').disabled=busy;$('loginEmail').disabled=busy;$('loginCode').disabled=busy;$('verifyCodeButton').disabled=busy;$('closeLoginDialog').disabled=busy;$('continueTrialButton').disabled=busy;
+  $('passwordLoginButton').textContent=busy?'正在登录并读取…':'登录并读取服务器档案';$('verifyCodeButton').textContent=busy?'正在验证…':'验证并登录';updateCodeButton();
   if(!busy&&(authChangePending||(providerUser()?.id||null)!==currentUserId))return reconcileAuthState();
 }
 function reconcileAuthState(){
   if(authBusy){authChangePending=true;return Promise.resolve()}
   authChangePending=false;const user=providerUser();
   if((user?.id||null)===currentUserId)return Promise.resolve();
-  clearTimeout(otpTimer);otpEmail='';otpResendAt=0;$('loginCode').value='';$('loginEmail').value='';if($('loginDialog').open)$('loginDialog').close();
+  clearTimeout(otpTimer);otpEmail='';otpResendAt=0;$('loginPassword').value='';$('loginCode').value='';$('loginEmail').value='';if($('loginDialog').open)$('loginDialog').close();
   if(user)return activateCloud(user);
   ++accountEpoch;currentUserId=null;activationUserId=null;authActivationPromise=null;savedGuestClient?.clear();savedGuestClient=null;trialImports.clear();
-  return startGuest().then(()=>toast('邮箱登录已结束，当前页面已切换为新的试用档案。'));
+  return startGuest().then(()=>toast('登录已结束，当前页面已切换为试用档案。'));
 }
 function openLogin(){
   if(providerUser()&&!(storageMode==='cloud'&&$('cloudBanner').dataset.state==='unauthorized')){activateCloud(providerUser());return}
-  const enabled=emailEnabled();$('loginUnavailable').hidden=enabled;$('sendCodeForm').hidden=!enabled;$('verifyCodeForm').hidden=!enabled||!otpEmail;loginMessage('');
-  $('loginDialog').showModal();updateCodeButton();if(enabled)$('loginEmail').focus();else $('continueTrialButton').focus();
+  const passwordEnabled=passwordLoginEnabled(),emailEnabled=emailLoginEnabled(),enabled=passwordEnabled||emailEnabled;
+  $('loginUnavailable').hidden=enabled;$('passwordLoginForm').hidden=!passwordEnabled;$('sendCodeForm').hidden=!emailEnabled;$('verifyCodeForm').hidden=!emailEnabled||!otpEmail;$('loginDivider').hidden=!(passwordEnabled&&emailEnabled);loginMessage('');
+  $('loginPassword').value='';$('loginDialog').showModal();if(passwordEnabled)$('loginPassword').focus();else if(emailEnabled)$('loginEmail').focus();else $('continueTrialButton').focus();updateCodeButton();
 }
-function closeLogin(){if(authBusy)return;clearTimeout(otpTimer);$('loginDialog').close()}
+function closeLogin(){if(authBusy)return;$('loginPassword').value='';clearTimeout(otpTimer);$('loginDialog').close()}
 async function sendCode(event){
-  event.preventDefault();if(authBusy||!emailEnabled()||Date.now()<otpResendAt)return;
+  event.preventDefault();if(authBusy||!emailLoginEnabled()||Date.now()<otpResendAt)return;
   const field=$('loginEmail');if(!field.reportValidity())return;const email=field.value.trim();setAuthBusy(true);loginMessage('正在发送验证码…');
   try{await XunxuCloud.sendCode(email);otpEmail=email;otpResendAt=Date.now()+60000;$('verifyCodeForm').hidden=false;$('loginCode').value='';$('codeEmailHint').textContent='验证码已发送至 '+email+'，也请检查垃圾邮件。';loginMessage('验证码已发送。请在邮件有效期内输入。')}
   catch(error){loginMessage(error.message||'验证码发送失败，请稍后重试。',true)}
@@ -698,22 +704,33 @@ async function resumeCloudAfterReauth(){
   const client=cloud,owner=activeProfileId,epoch=accountEpoch,state=client.status(owner),pendingAction=state.error?.source==='action'||Boolean(recordDraft?.dirty);
   if(state.dirty){
     try{await client.flush(owner)}
-    catch(error){if(epoch===accountEpoch)updateCloudStatus({profileId:owner,...client.status(owner)});return '邮箱已重新验证，修改仍未保存。请按页面提示重试。'}
+    catch(error){if(epoch===accountEpoch)updateCloudStatus({profileId:owner,...client.status(owner)});return '登录已恢复，修改仍未保存。请按页面提示重试。'}
   }
   if(epoch!==accountEpoch)return '登录身份已变化，正在重新读取档案。';
   if(pendingAction){
-    const error=Object.assign(new Error('邮箱已重新验证。刚才未完成的操作仍需重新执行，请重新确认成绩或再次打卡。'),{source:'action'});
-    updateCloudStatus({profileId:owner,status:'error',error,retryable:false});return '邮箱已重新验证，请重新执行刚才未完成的操作。';
+    const error=Object.assign(new Error('登录已恢复。刚才未完成的操作仍需重新执行，请重新确认成绩或再次打卡。'),{source:'action'});
+    updateCloudStatus({profileId:owner,status:'error',error,retryable:false});return '登录已恢复，请重新执行刚才未完成的操作。';
   }
-  updateCloudStatus({profileId:owner,...client.status(owner)});return state.dirty?'邮箱已重新验证，待保存的资料已同步到云端。':'邮箱已重新验证，当前档案和修改已保留。';
+  updateCloudStatus({profileId:owner,...client.status(owner)});return state.dirty?'登录已恢复，待保存的资料已同步到服务器。':'登录已恢复，当前档案和修改已保留。';
+}
+async function signInWithPassword(event){
+  event.preventDefault();if(authBusy||!passwordLoginEnabled())return;if(!$('loginPassword').reportValidity())return;
+  setAuthBusy(true);loginMessage('正在验证密码并读取服务器档案…');
+  try{
+    const user=await XunxuCloud.signInWithPassword($('loginPassword').value);if(!user?.id)throw new Error('登录状态已改变，请重新输入密码。');let message;
+    if(storageMode==='cloud'&&cloudReady&&currentUserId===user.id)message=await resumeCloudAfterReauth();
+    else{await activateCloud(user);message=storageMode==='cloud'?'登录成功，已优先读取服务器上的档案。':'密码已验证，可继续试用并重试连接云端。'}
+    $('loginPassword').value='';$('loginDialog').close();toast(message);
+  }catch(error){loginMessage(error.message||'登录失败，请核对密码后重试。',true)}
+  finally{await setAuthBusy(false)}
 }
 async function verifyCode(event){
-  event.preventDefault();if(authBusy||!emailEnabled()||!otpEmail)return;if(!$('loginCode').reportValidity())return;
+  event.preventDefault();if(authBusy||!emailLoginEnabled()||!otpEmail)return;if(!$('loginCode').reportValidity())return;
   setAuthBusy(true);loginMessage('正在验证邮箱…');
   try{
-    const user=await XunxuCloud.verifyCode(otpEmail,$('loginCode').value.trim());let message;
+    const user=await XunxuCloud.verifyCode(otpEmail,$('loginCode').value.trim());if(!user?.id)throw new Error('登录状态已改变，请重新确认邮箱。');let message;
     if(storageMode==='cloud'&&cloudReady&&currentUserId===user.id)message=await resumeCloudAfterReauth();
-    else{await activateCloud(user);message=storageMode==='cloud'?'邮箱登录成功，已读取你的云端档案。':'邮箱已验证，可继续试用并重试连接云端。'}
+    else{await activateCloud(user);message=storageMode==='cloud'?'邮箱登录成功，已优先读取服务器上的档案。':'邮箱已验证，可继续试用并重试连接云端。'}
     $('loginCode').value='';$('loginDialog').close();clearTimeout(otpTimer);toast(message);
   }catch(error){loginMessage(error.message||'验证码无效或已过期，请重新发送。',true)}
   finally{await setAuthBusy(false)}
@@ -723,7 +740,7 @@ async function signOut(){
   if(hasUnsavedChanges()&&!confirm('退出将清除当前页面尚未保存的资料和试用草稿。已经保存到云端的资料仍然保留。确定退出？'))return;
   authBusy=true;$('cloudSignOut').disabled=true;setEditingEnabled(false);
   try{
-    await XunxuCloud.signOut();++accountEpoch;currentUserId=null;activationUserId=null;authActivationPromise=null;savedGuestClient?.clear();savedGuestClient=null;trialImports.clear();otpEmail='';otpResendAt=0;$('loginEmail').value='';$('loginCode').value='';
+    await XunxuCloud.signOut();++accountEpoch;currentUserId=null;activationUserId=null;authActivationPromise=null;savedGuestClient?.clear();savedGuestClient=null;trialImports.clear();otpEmail='';otpResendAt=0;$('loginPassword').value='';$('loginEmail').value='';$('loginCode').value='';
     if(storageMode==='guest')cloud.clear();await startGuest();toast('已退出账号，云端资料已从当前页面清除。');
   }catch(error){storageError(error.message);setEditingEnabled(cloudReady)}
   finally{authBusy=false;$('cloudSignOut').disabled=false;await reconcileAuthState();updateStorageCopy()}
@@ -731,7 +748,7 @@ async function signOut(){
 async function startPublicApp(){
   await startGuest();
   if(!cloudConfigured())return;
-  try{const user=await XunxuCloud.init();if(user)await activateCloud(user)}catch(error){storageError('暂时无法恢复邮箱登录：'+error.message+' 你可以继续试用。')}
+  try{const user=await XunxuCloud.init();if(user)await activateCloud(user)}catch(error){storageError('暂时无法恢复登录：'+error.message+' 你可以继续试用。')}
   XunxuCloud.onAuthChange(()=>{reconcileAuthState().catch(error=>storageError(error.message))});
 }
 async function switchProfile(next){
@@ -804,7 +821,7 @@ $('cloudReload').addEventListener('click',reloadCloud);
 $('cloudSignIn').addEventListener('click',openLogin);$('cloudSignOut').addEventListener('click',signOut);
 $('closeLoginDialog').addEventListener('click',closeLogin);$('continueTrialButton').addEventListener('click',closeLogin);
 $('loginDialog').addEventListener('cancel',event=>{event.preventDefault();closeLogin()});
-$('sendCodeForm').addEventListener('submit',sendCode);$('verifyCodeForm').addEventListener('submit',verifyCode);
+$('passwordLoginForm').addEventListener('submit',signInWithPassword);$('sendCodeForm').addEventListener('submit',sendCode);$('verifyCodeForm').addEventListener('submit',verifyCode);
 $('importTrialButton').addEventListener('click',importTrial);
 
 window.addEventListener('beforeunload',event=>{if(hasUnsavedChanges()){event.preventDefault();event.returnValue='';}});
