@@ -1,8 +1,8 @@
-# 循序：独立邮箱账号与私有云档案
+# 循序：登录账号与私有云档案
 
-这套后端供公开静态训练计划使用。访客可以直接生成计划、填写资料和识别截图；**云端读写仅向已验证邮箱的 Supabase 用户开放**，无需 ChatGPT 账号。公开访问网站与读取私人档案是两个独立权限。
+这套后端供公开静态训练计划使用。访客可以直接生成计划、填写资料和识别截图；云端读写只向已验证的 Supabase Auth 账号开放，无需 ChatGPT 账号。网页提供邮箱验证码登录和可选的共享密码登录。共享密码登录的设备使用同一个 Supabase 账号和同一组档案；邮箱登录的用户各自隔离。
 
-此目录包含可执行迁移、验证码邮件模板和部署说明。它不会创建 Supabase 账号、购买服务、设置 SMTP 或迁移原 Sites 的 D1/R2 数据。原项目的数据保持原状。
+此目录包含可执行迁移、验证码邮件模板和部署说明。它不会创建 Supabase 账号、购买服务或迁移原 Sites 的 D1/R2 数据。原项目的数据保持原状。
 
 ## 1. 创建项目并运行迁移
 
@@ -14,7 +14,7 @@
 
 | 对象 | 职责 |
 | --- | --- |
-| `public.xunxu_profiles` | 用 `(owner_id, id)` 共同标识档案；仅能 SELECT 自己的已验证账号数据，禁止客户端直接增删改 |
+| `public.xunxu_profiles` | 用 `(owner_id, id)` 共同标识档案；仅能 SELECT 当前已验证账号的数据，禁止客户端直接增删改 |
 | `xunxu_private.image_uploads` | 管理上传凭据、当前关联图片、退休图片和重试清理状态；客户端不能直接查询或修改 |
 | 8 个 `public.xunxu_*` RPC | 核验身份、归属、字段、数量和 revision；控制档案与图片关联的写入 |
 | `storage.objects` 的 RLS policies | 只允许凭据指定的私有上传、自己的已关联图片读取和已授权清理；禁止覆盖已有文件 |
@@ -40,21 +40,22 @@ RPC 使用受控的 `SECURITY DEFINER`：固定空 `search_path`，所有引用�
 
 参考：[Private buckets](https://supabase.com/docs/guides/storage/buckets/fundamentals)、[Storage Access Control](https://supabase.com/docs/guides/storage/security/access-control)、[Storage schema](https://supabase.com/docs/guides/storage/schema/design)。
 
-## 3. 配置邮箱验证码
+## 3. 创建共享 Supabase Auth 账号
 
-在 Supabase Authentication 中：
+在 Supabase Authentication 中选定一个已确认邮箱的共享用户：
 
-1. 启用 Email provider，允许新用户注册，并保持 **Confirm email** 开启。此项目不使用匿名登录；将 Anonymous Sign-Ins 保持关闭。
-2. 在 **Magic Link** 邮件模板中粘贴 `email-template.html`；首次注册的 **Confirm signup** 模板也使用相同内容。建议主题为「循序 · 你的邮箱验证码」。模板包含 `{{ .Token }}`，让用户在页面输入验证码。
-3. 配置自定义 SMTP 与可发信的域名/发件人。SMTP 凭据只放在服务配置中，不放进仓库、网页或 GitHub 的公开变量。
-4. 在 URL Configuration 填写实际公开网站的 HTTPS 地址，以及确有需要的测试地址。页面使用输入验证码的流程，不依赖登录链接跳转。
-5. 用一个项目团队以外的普通邮箱完成首次注册收码、再次登录收码、验证码验证、保存、退出和重新读取测试。
+1. 启用 Email provider 的密码登录，并为这个账号设置网页登录密码。
+2. 关闭普通用户注册和匿名登录。不要把 Supabase `service_role`、`sb_secret_` 或共享密码写进网页、仓库或 GitHub Variables。
+3. 将共享账号邮箱作为公开变量 `SHARED_LOGIN_EMAIL` 配置到前端构建；网页收集密码并交给 Supabase Auth 校验。若需保留已有档案，必须使用当前档案所属的同一 Supabase 用户。
+4. 验证登录、读取云端档案、新建档案、修改后保存、退出以及另一台设备重新登录后读取同一资料。
 
-**默认 Supabase 发信服务不能直接当作面向公众的邮箱登录服务。** 官方说明其默认 SMTP 只接受项目团队预授权邮箱，且用于试用；要向普通访客发验证码，需要配置自定义 SMTP。当前项目只在上述真实流程验证成功后，才应把前端邮箱登录开关设为开启。
+邮箱验证码登录使用独立 Supabase Auth 用户，每个用户拥有隔离档案。启用该方式时，配置 Supabase Email OTP 与可靠的邮件投递（通常需要 SMTP）。共享密码登录和邮箱验证码登录可同时启用。
 
-前端使用 `signInWithOtp({email, options:{shouldCreateUser:true}})` 发码，再用 `verifyOtp({email,token,type:'email'})` 验证。RPC 对未确认邮箱和匿名身份均拒绝云访问。
+所有使用共享密码的人都能读取和修改这组账号下的全部档案。请仅在你愿意共享同一资料空间的设备和用户之间使用此密码。
 
-参考：[Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless)、[Email templates](https://supabase.com/docs/guides/auth/auth-email-templates)、[Custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp)。
+前端使用 `signInWithPassword({email, password})` 完成共享密码登录，邮箱验证码仍使用 OTP 流程。RPC 对未确认邮箱和匿名身份均拒绝云访问。
+
+参考：[Supabase 密码认证](https://supabase.com/docs/guides/auth/passwords)。
 
 ## 4. 发布公开前端配置
 
@@ -64,7 +65,9 @@ RPC 使用受控的 `SECURITY DEFINER`：固定空 `search_path`，所有引用�
 | --- | --- |
 | `SUPABASE_URL` | 项目的 HTTPS 根地址 |
 | `SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_…` 公钥 |
-| `EMAIL_LOGIN_ENABLED` | 完成真实服务验证后设为 `true`；配置前保持 `false` |
+| `EMAIL_LOGIN_ENABLED` | 邮箱验证码登录启用后设为 `true`，否则为 `false` |
+| `SHARED_LOGIN_EMAIL` | Supabase 中已确认的共享账号邮箱 |
+| `PASSWORD_LOGIN_ENABLED` | 完成真实服务验证后设为 `true`；配置前保持 `false` |
 
 这些前端配置会公开。**不得使用 service-role key、secret key、数据库连接密码或 SMTP 凭据替代公钥。** 用户身份来自 Supabase Auth 签发的会话令牌，私有数据访问由 RLS 与 RPC 控制；应用不从客户端自造 owner 或信任任意身份 header。
 
@@ -140,4 +143,4 @@ node --test tests/supabase-schema.test.cjs
 
 测试会在 `@electric-sql/pglite` 的实际 PostgreSQL 引擎执行完整迁移，建立最小 Auth/Storage schema，切换数据库角色与身份，验证 RLS 和权限，而非只搜索 SQL 文本。覆盖同名跨账号档案、同账号跨档案、匿名与未确认邮箱拒绝、直接 DML 拒绝、CAS、字段与上限、伪造图片标记、metadata 校验、票据生命周期、清理租约及其他宽泛 Storage policy 的防绕过。
 
-PGlite 测试不包含真实邮件发送、JWT 签名验证、Storage HTTP 文件服务或多条独立数据库连接的并发压测；创建限额所需 advisory lock 有明确检查，但完整并发行为仍应在目标 Supabase 项目做验收。上线前务必补一次两个真实邮箱账号的保存、跨账号拒绝、截图上传/读取、替换/删除和冲突测试。没有连接目标项目的测试结果不能当作该服务已经配置成功。
+PGlite 测试不包含 JWT 签名验证、Storage HTTP 文件服务或多条独立数据库连接的并发压测；创建限额所需 advisory lock 有明确检查，但完整并发行为仍应在目标 Supabase 项目做验收。上线前务必在目标项目验证共享账号保存、另一台设备重新读取、截图上传/读取、替换/删除和冲突处理。没有连接目标项目的验证不能当作该服务已经配置成功。
